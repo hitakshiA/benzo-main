@@ -1,0 +1,193 @@
+@import "tailwindcss";
+
+/*
+ * Benzo wallet - consumer brand. Warm, playful, one focal point.
+ * Privacy is ambient (the "Private" chip), never a toggle/lock that screams crypto.
+ */
+@theme {
+  --font-heading: "Helvetica Now Display Bold", "Hanken Grotesk", sans-serif;
+  --font-body: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+
+  /* OKLCH: perceptually uniform, neutrals tinted, chroma eased at the extremes.
+     No pure white/black - the card is a hair-warm near-white above the canvas. */
+  --color-ink: oklch(0.29 0.028 252);
+  --color-accent: oklch(0.553 0.207 292);
+  --color-accent-soft: oklch(0.945 0.026 293);
+  --color-canvas: oklch(0.962 0.005 106);
+  --color-card: oklch(0.995 0.004 106);
+  /* Darkened one step for legibility where secondary text sits over the sky
+     video (the old 0.55 washed out over bright cloud). */
+  --color-muted: oklch(0.5 0.016 258);
+  --color-hair: oklch(0.29 0.028 252 / 0.08);
+  --color-pos: oklch(0.66 0.13 159);
+  --color-amber: oklch(0.76 0.13 75);
+  --color-danger: oklch(0.61 0.18 28);
+
+  /* Radius scale — pull back the inflation/over-rounding. Main cards 24–28px,
+     compact surfaces 20–24, inputs 14–16, buttons 16–20. */
+  --radius-card: 1.6rem; /* 25.6px */
+  --radius-compact: 1.375rem; /* 22px */
+  --radius-input: 0.875rem; /* 14px */
+  --radius-button: 1.25rem; /* 20px */
+  --shadow-card: 0 10px 30px oklch(0.29 0.028 252 / 0.07);
+  --shadow-glow: 0 4px 24px oklch(0.553 0.207 292 / 0.28);
+
+  /* Space the BottomNav (and its protruding FAB) never overlaps content. */
+  --nav-inset: 112px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
+}
+.font-display {
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+}
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ type scale
+   One consistent ramp so page titles / amounts / rows read the same on every
+   screen (Profile used to run larger than Send/Receive). Sizes are utilities so
+   later screen waves can adopt them without re-deriving px values. */
+.text-page-title {
+  font-size: 2rem; /* 32px */
+  line-height: 2.375rem; /* 38px */
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.text-amount {
+  font-size: 3.125rem; /* 50px */
+  line-height: 3.625rem; /* 58px */
+  letter-spacing: -0.01em;
+}
+.text-section {
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1.125rem; /* 18px */
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.text-card-title {
+  font-size: 1.125rem; /* 18px */
+  line-height: 1.5rem; /* 24px */
+  font-weight: 600;
+}
+.text-row-title {
+  font-size: 1.0625rem; /* 17px */
+  line-height: 1.375rem; /* 22px */
+  font-weight: 600;
+}
+.text-body {
+  font-size: 1rem; /* 16px */
+  line-height: 1.5rem; /* 24px */
+}
+.text-secondary {
+  font-size: 0.9375rem; /* 15px */
+  line-height: 1.375rem; /* 22px */
+}
+.text-nav {
+  font-size: 0.75rem; /* 12px */
+  line-height: 1rem; /* 16px */
+  font-weight: 600;
+}
+.text-status {
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1.0625rem; /* 17px */
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ surfaces
+   The sky video is a hero backdrop, not a reading surface. Long lists / forms /
+   settings sit on a near-solid off-white `.surface` so text + buttons never land
+   on a bright cloud edge. `.pb-nav` reserves clearance for the BottomNav + FAB. */
+.surface {
+  background: var(--color-canvas);
+}
+.surface-raised {
+  background: var(--color-card);
+}
+.pb-nav {
+  /* BottomNav + FAB clearance, plus the mobile home-indicator inset so the last
+     row of content never hides under it. Desktop insets resolve to 0. */
+  padding-bottom: calc(var(--nav-inset) + env(safe-area-inset-bottom));
+}
+
+/* ------------------------------------------------------------ safe areas
+   The chrome lives edge-to-edge on a real phone, so respect the notch / status
+   bar (top) and the home indicator (bottom). All env() insets are 0 on desktop,
+   so these are inert there. */
+.safe-nav {
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  padding-left: max(1.5rem, env(safe-area-inset-left));
+  padding-right: max(1.5rem, env(safe-area-inset-right));
+}
+.safe-top {
+  padding-top: calc(1.25rem + env(safe-area-inset-top));
+}
+/* Balance hero - the single focal figure on Home. One token so the dollars and
+   the smaller cents/$ glyphs stay in proportion if the hero is ever retuned. */
+.text-hero {
+  font-size: 3.375rem; /* 54px */
+  line-height: 1;
+}
+.text-hero-sub {
+  font-size: 2.125rem; /* 34px - cents + $ glyph */
+  line-height: 1;
+}
+/* hide scrollbars inside the app frame for a native feel */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.benzo-google-button {
+  width: 100%;
+}
+.benzo-google-button > div {
+  width: 100% !important;
+}
+.benzo-google-button iframe {
+  width: 100% !important;
+  border-radius: 9999px !important;
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(25, 40, 55, 0.06);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: shimmer 1.4s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

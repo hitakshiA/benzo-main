@@ -1,0 +1,47 @@
+{
+	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"files": {
+		"include": ["packages/**/src/**/*.ts", "apps/wallet/src/**/*.ts", "apps/wallet/src/**/*.tsx"]
+	},
+	"formatter": { "enabled": false },
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"a11y": {
+				"useButtonType": "off",
+				"noSvgWithoutTitle": "off",
+				"noAriaHiddenOnFocusable": "off",
+				"useSemanticElements": "off",
+				"noAutofocus": "off"
+			},
+			"style": {
+				"noNonNullAssertion": "off",
+				"useTemplate": "off",
+				"useImportType": "off",
+				"useNumberNamespace": "off",
+				"useSelfClosingElements": "off",
+				"useExponentiationOperator": "off",
+				"noInferrableTypes": "off",
+				"noUnusedTemplateLiteral": "off"
+			},
+			"complexity": {
+				"useOptionalChain": "off",
+				"useArrowFunction": "off",
+				"noForEach": "off"
+			},
+			"correctness": {
+				"useExhaustiveDependencies": "off"
+			},
+			"performance": {
+				"noDelete": "off"
+			},
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noArrayIndexKey": "off",
+				"noAssignInExpressions": "off"
+			}
+		}
+	}
+}

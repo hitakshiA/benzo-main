@@ -1,0 +1,17 @@
+{
+  "_comment": "Expected sha256 of each eERC circuit .zkey per network. The verifiers are network-coupled: Fuji deploys the DEV (contributions:0) trusted setup; Avalanche mainnet deploys the multi-party CEREMONY output. A build that stages the wrong set makes every on-chain proof revert InvalidProof(). stage-circuits.mjs / check-circuits.mjs enforce this. Regenerate a network's block by hashing its canonical zkeys (sha256sum <op>.zkey).",
+  "fuji": {
+    "registration": "cfc3b85b81943aa87cb3ccd0bc0b1241e1e73a9403777eda42f7c1cd7aff9b44",
+    "mint": "e424ee60f0ff8dbd362c4035744b693c444fddc369d1f617f3306fafd008df11",
+    "transfer": "b71f0aa3be42b4ea57848cde0bc78cf7d9f8e52d1a410d47f3ec99bde2d3984d",
+    "withdraw": "f044fccc20771fa919492fa69ba6f45c8dfe893bb2cba55dcace3e0bd76b4d52",
+    "burn": "5cd0b8636959389ca766405ab9bc8da54de7f79be65524470625d7399bb7cadd"
+  },
+  "avalanche": {
+    "registration": "ad34b03b7698a8d4d8006806e17b4289f718cceca25279461c85836507650311",
+    "mint": "aab57a8480bc73883ffe4ea749b62c64ee4b0a973c970c79337cfd69ee87ba90",
+    "transfer": "4b1f62df496653741c3ea9919e7dd8155a82a221ccaa273e191eb9dd91b2d0d5",
+    "withdraw": "ca185d63d52c2f099c393160f2a9b30c0df98643dbd168fb721c771e95528b38",
+    "burn": "1561838c82342d9fe829f8943b27b34f05cfc8fb3d091c40388a05489b7f4f15"
+  }
+}

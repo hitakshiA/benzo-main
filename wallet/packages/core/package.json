@@ -1,0 +1,39 @@
+{
+  "name": "@benzo/core",
+  "version": "0.1.0",
+  "description": "Headless TypeScript primitives for the Benzo Avalanche/eERC wallet.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "browser": "./dist/index.browser.js",
+  "exports": {
+    ".": {
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "default": "./dist/index.browser.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run src/account.test.ts"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.5.0",
+    "snarkjs": "^0.7.5",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "benzo-wallet-workspace",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @benzo/wallet-app dev",
+    "build": "pnpm -r --sort build",
+    "test": "pnpm -r test",
+    "lint": "biome lint ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "typescript": "^5.5.0"
+  }
+}
