@@ -1,0 +1,555 @@
+/**
+ * Typed client for benzo services/api. Screens use only this typed surface, so
+ * the UI can keep the port contained while per-flow issues finish the backend
+ * contract details.
+ */
+import type {
+  Account,
+  AppUser,
+  ApprovalPolicy,
+  ApproveRequest,
+  AuthSession,
+  Counterparty,
+  CreateOrgRequest,
+  CreateOrgResponse,
+  CreateInvoiceRequest,
+  CreatePaymentRequest,
+  CreatePayrollRunRequest,
+  CreatePayrollRunResponse,
+  CreateViewingGrantRequest,
+  DashboardSummary,
+  Integration,
+  Invoice,
+  LedgerEntry,
+  LiveStatusResponse,
+  Member,
+  OnboardingStatus,
+  OnboardingStatusResponse,
+  OrgSummary,
+  PaymentOrder,
+  PausePayrollRunResponse,
+  PayrollProgressEvent,
+  PayrollRun,
+  PayrollRunResponse,
+  DepositToTreasuryRequest,
+  DepositToTreasuryResponse,
+  ProvisionTreasuryResponse,
+  ResumePayrollRunResponse,
+  StartPayrollRunResponse,
+  TreasuryDepositsResponse,
+  TreasuryUnderfundedError,
+  StartOnboardingResponse,
+  TreasuryView,
+  ViewingGrant,
+} from "@benzo/types";
+
+import type { OnChainRef } from "../ui/onchain";
+export type { OnChainRef };
+
+import { DEMO_MODE } from "../demo/flag";
+import { demoApi } from "../demo/api";
+
+export interface OrgInvite {
+  id: string;
+  kind: "member" | "contractor" | "customer";
+  name?: string;
+  email?: string;
+  role?: string;
+  counterpartyId?: string;
+  link: string;
+  token: string;
+  status: "sent" | "accepted" | "revoked";
+  createdAt: string;
+}
+
+/** Maker-checker progress the BFF returns alongside an approve action. */
+export interface ApprovalProgressView {
+  required: boolean;
+  satisfied: boolean;
+  nextRole: string | null;
+  nextKind: "approve" | "release" | null;
+  steps: Array<{ stepIndex: number; role: string; need: number; have: number; satisfied: boolean; kind: "approve" | "release" }>;
+}
+
+export interface PrivateEventEnvelopeView {
+  id: string;
+  orgId: string;
+  type: string;
+  subjectId: string;
+  schema: string;
+  occurredAt: string;
+  publicMeta: Record<string, string | number | boolean | null>;
+  ciphertext: string;
+  iv: string;
+  tag: string;
+  aadHash: string;
+  payloadHash: string;
+  prevHash: string;
+  hash: string;
+}
+
+export interface PrivateAuditPacketResponse {
+  packet: {
+    orgId: string;
+    scope: { label: string; from?: string; to?: string; eventTypes?: string[]; subjectIds?: string[] };
+    anchor: { orgId: string; eventCount: number; headHash: string; merkleRoot: string; anchoredAt: string; txHash?: string };
+    envelopes: PrivateEventEnvelopeView[];
+    inclusionProofs: Array<{ eventHash: string; siblings: string[]; index: number }>;
+    issuedAt: string;
+  };
+  integrity: { ok: boolean; headHash: string; brokenAt?: number };
+  disclosure: string;
+}
+
+export interface PrivateAuditAnchorResponse extends PrivateAuditPacketResponse {
+  packetHash: string;
+  orgHash: string;
+  anchor: {
+    onChain: boolean;
+    contractId?: string;
+    txHash?: string;
+    sequence?: string;
+    error?: string;
+    explorer?: string;
+  };
+}
+
+export interface ProofReceipt {
+  id: string;
+  action: string;
+  vkId: string;
+  verified: boolean;
+  verifier?: string;
+  network?: string;
+  txHash?: string;
+  root?: string;
+  publicInputs?: unknown;
+  createdAt: string;
+}
+
+export interface RecoveryStatus {
+  status: "ok";
+  recovery: {
+    bound: boolean;
+    createdAt?: string;
+    lastSeenAt?: string;
+    status: "unbound" | "healthy";
+    custody: "non-custodial";
+    nextSteps: string[];
+  };
+}
+
+export function apiHref(path: string): string {
+  const apiBaseUrl = ((import.meta.env as Record<string, string | undefined>).VITE_API_BASE_URL ?? "/api").replace(/\/+$/, "");
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return `${apiBaseUrl}${suffix}`;
+}
+
+export const ACTIVE_ORG_KEY = "benzo.activeOrg";
+const LEGACY_GOOGLE_TOKEN_KEY = "benzo.console.googleCredential";
+const LEGACY_GOOGLE_IDENTITY_KEY = "benzo.console.identityKey";
+const LEGACY_AUTH_TOKEN_KEY = "benzo.console.siweToken";
+const LEGACY_AUTH_IDENTITY_KEY = "benzo.console.siweIdentity";
+const IDEMPOTENCY_PREFIX = "benzo.idempotency.console.v1:";
+export const AUTH_REQUIRED_EVENT = "benzo:console-auth-required";
+export const AUTH_CHANGED_EVENT = "benzo:console-auth-changed";
+
+export function clearHostedAuthState(): void {
+  localStorage.removeItem(ACTIVE_ORG_KEY);
+  localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_AUTH_IDENTITY_KEY);
+  localStorage.removeItem(LEGACY_GOOGLE_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_GOOGLE_IDENTITY_KEY);
+  localStorage.removeItem("benzo.console.onboarded");
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
+
+export function notifyAuthRequired(): void {
+  clearHostedAuthState();
+  window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
+}
+
+function shortHash(input: string): string {
+  let h = 0x811c9dc5;
+  for (const ch of input) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+export function randomIdempotencyKey(): string {
+  const uuid = crypto.randomUUID?.();
+  if (uuid) return `idem_${uuid}`;
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return `idem_${[...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function idempotencyKey(path: string, init?: RequestInit): { key: string; clear: () => void } | null {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return null;
+  const body = typeof init?.body === "string" ? init.body : "";
+  const storageKey = `${IDEMPOTENCY_PREFIX}${shortHash(`${method}:${path}:${body}`)}`;
+  let key = localStorage.getItem(storageKey);
+  if (!key) {
+    key = randomIdempotencyKey();
+    localStorage.setItem(storageKey, key);
+  }
+  return { key, clear: () => localStorage.removeItem(storageKey) };
+}
+
+function prepareApiRequest(path: string, init?: RequestInit): { url: string; init: RequestInit; clearIdempotency?: () => void } {
+  const headers = new Headers(init?.headers);
+  headers.set("content-type", headers.get("content-type") ?? "application/json");
+  const idem = idempotencyKey(path, init);
+  if (idem) headers.set("Idempotency-Key", idem.key);
+  return {
+    url: apiHref(path),
+    init: { credentials: init?.credentials ?? "include", ...init, headers },
+    clearIdempotency: idem?.clear,
+  };
+}
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(message: string, status: number, body: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+export function isTreasuryUnderfundedError(error: unknown): error is ApiError & { body: TreasuryUnderfundedError } {
+  return error instanceof ApiError
+    && typeof error.body === "object"
+    && error.body !== null
+    && "error" in error.body
+    && (error.body as { error?: unknown }).error === "treasury_underfunded";
+}
+
+async function http<T>(path: string, init?: RequestInit): Promise<T> {
+  const prepared = prepareApiRequest(path, init);
+  let res: Response | undefined;
+  try {
+    res = await fetch(prepared.url, prepared.init);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      let body: unknown;
+      try {
+        body = await res.json();
+        if (typeof body === "object" && body !== null && "error" in body && typeof (body as { error?: unknown }).error === "string") {
+          detail = (body as { error: string }).error;
+        }
+      } catch {
+        /* ignore */
+      }
+      if (res.status === 401 && path !== "/auth/verify") notifyAuthRequired();
+      throw new ApiError(detail, res.status, body);
+    }
+    return (await res.json()) as T;
+  } finally {
+    if (res && res.status < 500) prepared.clearIdempotency?.();
+  }
+}
+
+export interface OnboardingStatusSubscription {
+  close: () => void;
+}
+
+export type OnboardingStatusHandler = (onboarding: OnboardingStatus) => void;
+export type OnboardingStatusErrorHandler = (error: Error) => void;
+
+export interface PayrollProgressSubscription {
+  close: () => void;
+}
+
+export type PayrollProgressHandler = (event: PayrollProgressEvent) => void;
+export type PayrollProgressErrorHandler = (error: Error) => void;
+
+function terminalOnboardingStatus(status: OnboardingStatus["status"]): boolean {
+  return status === "complete" || status === "failed";
+}
+
+function terminalPayrollStatus(status: PayrollRun["status"]): boolean {
+  return status === "complete" || status === "failed";
+}
+
+function parseOnboardingEvent(data: string): OnboardingStatus | null {
+  if (!data) return null;
+  const parsed = JSON.parse(data) as OnboardingStatus | OnboardingStatusResponse;
+  return "onboarding" in parsed ? parsed.onboarding : parsed;
+}
+
+function subscribeOnboardingStatus(
+  onStatus: OnboardingStatusHandler,
+  onError?: OnboardingStatusErrorHandler,
+): OnboardingStatusSubscription {
+  let closed = false;
+  let source: EventSource | null = null;
+  let pollTimer: number | null = null;
+
+  const close = () => {
+    closed = true;
+    source?.close();
+    source = null;
+    if (pollTimer) window.clearTimeout(pollTimer);
+    pollTimer = null;
+  };
+
+  const emit = (onboarding: OnboardingStatus) => {
+    onStatus(onboarding);
+    if (terminalOnboardingStatus(onboarding.status)) close();
+  };
+
+  const poll = () => {
+    if (closed) return;
+    void realApi.onboardingStatus().then(
+      ({ onboarding }) => {
+        if (closed) return;
+        emit(onboarding);
+        if (!terminalOnboardingStatus(onboarding.status)) {
+          pollTimer = window.setTimeout(poll, 2_000);
+        }
+      },
+      (error) => {
+        if (closed) return;
+        onError?.(error instanceof Error ? error : new Error("Onboarding status polling failed."));
+        pollTimer = window.setTimeout(poll, 2_000);
+      },
+    );
+  };
+
+  const startPolling = () => {
+    source?.close();
+    source = null;
+    poll();
+  };
+
+  if (typeof EventSource === "undefined") {
+    startPolling();
+    return { close };
+  }
+
+  try {
+    source = new EventSource(apiHref("/onboarding/status/stream"), { withCredentials: true });
+    source.addEventListener("status", (event) => {
+      try {
+        const onboarding = parseOnboardingEvent((event as MessageEvent<string>).data);
+        if (onboarding) emit(onboarding);
+      } catch (error) {
+        onError?.(error instanceof Error ? error : new Error("Onboarding status stream returned malformed data."));
+      }
+    });
+    source.addEventListener("terminal", (event) => {
+      try {
+        const onboarding = parseOnboardingEvent((event as MessageEvent<string>).data);
+        if (onboarding) emit(onboarding);
+      } catch {
+        close();
+      }
+      close();
+    });
+    source.onerror = () => {
+      if (closed) return;
+      startPolling();
+    };
+  } catch {
+    startPolling();
+  }
+
+  return { close };
+}
+
+function subscribePayrollProgress(
+  runId: string,
+  onProgress: PayrollProgressHandler,
+  onError?: PayrollProgressErrorHandler,
+): PayrollProgressSubscription {
+  let closed = false;
+  let pollTimer: number | null = null;
+
+  const close = () => {
+    closed = true;
+    if (pollTimer) window.clearTimeout(pollTimer);
+    pollTimer = null;
+  };
+
+  const poll = () => {
+    if (closed) return;
+    void realApi.getPayrollRun(runId).then(
+      ({ run, progress }) => {
+        if (closed) return;
+        onProgress({ runId: run.id, status: run.status, progress });
+        if (terminalPayrollStatus(run.status)) {
+          close();
+          return;
+        }
+        pollTimer = window.setTimeout(poll, 2_000);
+      },
+      (error) => {
+        if (closed) return;
+        onError?.(error instanceof Error ? error : new Error("Payroll progress polling failed."));
+        pollTimer = window.setTimeout(poll, 2_000);
+      },
+    );
+  };
+
+  poll();
+  return { close };
+}
+
+export interface SiweNonceResponse {
+  nonce: string;
+  expiresAt: string;
+}
+
+export interface SiweVerifyResponse {
+  user: AppUser;
+}
+
+interface OrgsResponse {
+  orgs: OrgSummary[];
+}
+
+export function selectActiveOrg(orgs: OrgSummary[], id = localStorage.getItem(ACTIVE_ORG_KEY)): OrgSummary | null {
+  if (orgs.length === 0) return null;
+  return orgs.find((org) => org.id === id) ?? orgs[0] ?? null;
+}
+
+export function buildAppSession(user: AppUser, orgs: OrgSummary[]): AuthSession {
+  const activeOrg = selectActiveOrg(orgs);
+  return { user, orgs, activeOrg, role: activeOrg?.role ?? null };
+}
+
+export function sessionWithActiveOrg(session: AuthSession, id: string): AuthSession {
+  localStorage.setItem(ACTIVE_ORG_KEY, id);
+  const activeOrg = selectActiveOrg(session.orgs, id);
+  return { ...session, activeOrg, role: activeOrg?.role ?? null };
+}
+
+const realApi = {
+  session: async () => {
+    const { user } = await http<SiweVerifyResponse>("/auth/me");
+    const { orgs } = await http<OrgsResponse>("/orgs");
+    return buildAppSession(user, orgs);
+  },
+  orgs: () => http<OrgsResponse>("/orgs"),
+  recoveryStatus: () => http<RecoveryStatus>("/recovery/status"),
+  siweNonce: (address: string) =>
+    http<SiweNonceResponse>(`/auth/nonce?address=${encodeURIComponent(address)}`),
+  siweVerify: (message: string, signature: string) =>
+    http<SiweVerifyResponse>("/auth/verify", { method: "POST", body: JSON.stringify({ message, signature }) }),
+  logout: () => http<{ ok: true }>("/auth/logout", { method: "POST", body: "{}" }).finally(clearHostedAuthState),
+  createOrg: (body: CreateOrgRequest) =>
+    http<CreateOrgResponse>("/orgs", { method: "POST", body: JSON.stringify(body) }),
+  startOnboarding: (mockKyc?: { name?: string; country?: string }) =>
+    http<StartOnboardingResponse>("/onboarding/start", { method: "POST", body: JSON.stringify(mockKyc ? { mockKyc } : {}) }),
+  onboardingStatus: () => http<OnboardingStatusResponse>("/onboarding/status"),
+  subscribeOnboardingStatus,
+  provisionTreasury: (orgId: string) =>
+    http<ProvisionTreasuryResponse>(`/orgs/${encodeURIComponent(orgId)}/treasury`, { method: "POST", body: JSON.stringify({ consent: true }) }),
+  orgTreasury: (orgId: string) =>
+    http<TreasuryView>(`/orgs/${encodeURIComponent(orgId)}/treasury`),
+  depositToTreasury: (orgId: string, body: DepositToTreasuryRequest) =>
+    http<DepositToTreasuryResponse>(`/orgs/${encodeURIComponent(orgId)}/treasury/deposit`, { method: "POST", body: JSON.stringify(body) }),
+  treasuryDeposits: (orgId: string, query: { limit?: number; before?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (query.limit != null) params.set("limit", String(query.limit));
+    if (query.before) params.set("before", query.before);
+    const qs = params.toString();
+    return http<TreasuryDepositsResponse>(`/orgs/${encodeURIComponent(orgId)}/treasury/deposits${qs ? `?${qs}` : ""}`);
+  },
+  live: () => http<LiveStatusResponse>("/live"),
+  dashboard: () => http<DashboardSummary>("/dashboard"),
+  // KYB-as-ZK credential (Z7): prove verified business + jurisdiction + tier on-chain (KYB), docs hidden.
+  proveKyb: () =>
+    http<{ ok: boolean; onChain: boolean; jurisdiction: string; tier: string; ref?: OnChainRef }>("/compliance/kyb-credential", { method: "POST", body: "{}" }),
+  // Records export (Z2): network-verified period-total attestation (ORGSUM proof embedded).
+  periodTotalAttestation: (period: string) =>
+    http<{
+      live: boolean; org?: string; period?: string; total?: string; onChain?: boolean;
+      vkId?: string; verifier?: string; network?: string; root?: string;
+      proof?: unknown; publicInputs?: string[]; issuedAt?: string;
+    }>("/records/period-total", { method: "POST", body: JSON.stringify({ period }) }),
+  accounts: () => http<Account[]>("/accounts"),
+  members: () => http<Member[]>("/members"),
+  counterparties: () => http<Counterparty[]>("/counterparties"),
+  updateCounterparty: (id: string, patch: { payRate?: string; status?: Counterparty["status"]; handle?: string; name?: string }) =>
+    http<Counterparty>(`/counterparties/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  importRoster: (csv: string) =>
+    http<{ imported: number; errors: Array<{ line: number; error: string }>; contractors: Counterparty[] }>("/payrolls/import", { method: "POST", body: JSON.stringify({ csv }) }),
+  // Employer-visible pay history for one contractor across every run.
+  contractorHistory: (id: string) =>
+    http<Array<{ period: string; amount: string; status: string; txHash?: string; batchId: string }>>(`/contractors/${id}/history`),
+
+  payments: () => http<PaymentOrder[]>("/payments"),
+  createPayment: (body: CreatePaymentRequest & { toHandle?: string }) =>
+    http<PaymentOrder>("/payments", { method: "POST", body: JSON.stringify(body) }),
+  approvePayment: (id: string, body: ApproveRequest & { actorMemberId?: string }) =>
+    http<PaymentOrder & { progress?: ApprovalProgressView }>(`/payments/${id}/approve`, { method: "POST", body: JSON.stringify(body) }),
+
+  createPayrollRun: (orgId: string, body: CreatePayrollRunRequest) =>
+    http<CreatePayrollRunResponse>(`/orgs/${encodeURIComponent(orgId)}/payroll`, { method: "POST", body: JSON.stringify(body) }),
+  getPayrollRun: (runId: string) =>
+    http<PayrollRunResponse>(`/payroll/${encodeURIComponent(runId)}`),
+  subscribePayrollProgress,
+  startPayrollRun: (runId: string) =>
+    http<StartPayrollRunResponse>(`/payroll/${encodeURIComponent(runId)}/start`, { method: "POST", body: "{}" }),
+  pausePayrollRun: (runId: string) =>
+    http<PausePayrollRunResponse>(`/payroll/${encodeURIComponent(runId)}/pause`, { method: "POST", body: "{}" }),
+  resumePayrollRun: (runId: string) =>
+    http<ResumePayrollRunResponse>(`/payroll/${encodeURIComponent(runId)}/resume`, { method: "POST", body: "{}" }),
+
+  invoices: () => http<Invoice[]>("/invoices"),
+  createInvoice: (body: CreateInvoiceRequest) =>
+    http<Invoice>("/invoices", { method: "POST", body: JSON.stringify(body) }),
+  payInvoice: (id: string) =>
+    http<{ invoice: Invoice; payment: PaymentOrder }>(`/invoices/${id}/pay`, { method: "POST", body: "{}" }),
+  // Cross-entity private netting (Z8): net mutual invoices, settle the difference, grosses hidden (NETTING).
+  netInvoices: (weOwe: string, theyOwe: string) =>
+    http<{ onChain: boolean; net: string; wetPay: boolean; ref?: OnChainRef }>("/invoices/net", { method: "POST", body: JSON.stringify({ weOwe, theyOwe }) }),
+
+  grants: () => http<ViewingGrant[]>("/grants"),
+  createGrant: (body: CreateViewingGrantRequest) =>
+    http<ViewingGrant>("/grants", { method: "POST", body: JSON.stringify(body) }),
+  revokeGrant: (id: string) => http<ViewingGrant>(`/grants/${id}/revoke`, { method: "POST", body: "{}" }),
+
+  policies: () => http<ApprovalPolicy[]>("/policies"),
+  updatePolicy: (id: string, patch: Partial<Pick<ApprovalPolicy, "name" | "conditions" | "steps" | "releaseGate">>) =>
+    http<ApprovalPolicy>(`/policies/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+
+  integrations: () => http<Integration[]>("/integrations"),
+
+  // Tamper-evident double-entry audit trail (each entry hash-chains to the prior).
+  ledger: () => http<LedgerEntry[]>("/ledger"),
+  // Re-walk the chain server-side and report integrity (ok / brokenAt index).
+  ledgerVerify: () => http<{ ok: boolean; length: number; brokenAt?: number }>("/ledger/verify"),
+  proofReceipts: () => http<ProofReceipt[]>("/proof-receipts"),
+  privateAuditPacket: () => http<PrivateAuditPacketResponse>("/audit/private-events"),
+  anchorPrivateAuditRoot: (body?: {
+    packet?: PrivateAuditPacketResponse["packet"];
+    packetHash?: string;
+    orgHash?: string;
+  }) =>
+    http<PrivateAuditAnchorResponse>("/audit/private-events/anchor", { method: "POST", body: JSON.stringify(body ?? {}) }),
+  invites: () => http<OrgInvite[]>("/invites"),
+  createInvite: (body: { kind: OrgInvite["kind"]; name?: string; email?: string; role?: string; handle?: string }) =>
+    http<OrgInvite>("/invites", { method: "POST", body: JSON.stringify(body) }),
+  acceptInvite: (body: { token: string; name?: string }) =>
+    http<{ ok: boolean; orgName: string; kind: OrgInvite["kind"]; counterpartyId?: string; orgId: string }>("/invites/accept", { method: "POST", body: JSON.stringify(body) }),
+  bulkInvite: (csv: string) =>
+    http<{ created: number; errors: Array<{ line: number; error: string }>; invites: OrgInvite[] }>("/invites/bulk", { method: "POST", body: JSON.stringify({ csv }) }),
+  revokeInvite: (id: string) => http<OrgInvite>(`/invites/${id}/revoke`, { method: "POST", body: "{}" }),
+};
+
+/**
+ * The single typed api surface every screen imports. In demo mode (build-time
+ * `VITE_DEMO_MODE=1`) it's the seeded, no-network `demoApi`; otherwise it's the
+ * real BFF client. `DEMO_MODE` folds to `false` in a normal build, so the demo
+ * branch (and its imports) tree-shake away and this is exactly `realApi`.
+ */
+export const api = DEMO_MODE ? (demoApi as unknown as typeof realApi) : realApi;

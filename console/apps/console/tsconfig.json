@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["vite/client", "vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "@benzo/config": ["../../packages/config/src/index.ts"],
+      "@benzo/links": ["../../packages/links/src/index.ts"],
+      "@benzo/ui/payment-state": ["../../packages/ui/src/payment-state.ts"],
+      "@benzo/ui/send-sequence": ["../../packages/ui/src/send-sequence.ts"],
+      "@benzo/types": ["../../packages/types/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}
