@@ -1,0 +1,9 @@
+packages:
+  - contracts
+  - infra
+  - packages/*
+  - services/*
+  - tests/*
+
+onlyBuiltDependencies:
+  - esbuild

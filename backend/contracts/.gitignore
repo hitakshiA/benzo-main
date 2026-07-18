@@ -1,0 +1,31 @@
+# Hardhat outputs
+/artifacts/
+/cache/
+/typechain-types/
+/coverage/
+/coverage.json
+
+# hardhat-zkit outputs
+/generated-types/
+/zkit/
+*.zkey
+*.wasm
+*.wtns
+*.r1cs
+*.ptau
+
+# DEV verifiers regenerated from the dev zkeys for the proof round-trip tests
+# (scripts/gen-test-verifiers.ts, run on pretest). Never committed: the committed
+# verifiers under contracts/verifiers are the real CEREMONY build.
+/contracts/verifiers-dev/
+
+# Local reports
+gas-report.txt
+
+# Local bearer secrets
+.gift-link.local.txt
+.auditor-key.local.json
+.seed-fixtures.local.json
+.seed-payroll.local.csv
+/deployments/hardhat.json
+/deployments/localhost.json

@@ -1,0 +1,166 @@
+{
+  "chainId": 43113,
+  "contracts": {
+    "handleRegistry": "0xC74EcCDE4D9A1F48D560de9A96521D28D58B474b",
+    "cctp": {
+      "domain": 1,
+      "tokenMessenger": "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA",
+      "messageTransmitter": "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275",
+      "autoDepositRouter": "0x4b4f0dc760115DB356Cdfa89b4950E3418a3d98d"
+    },
+    "eercConverter": {
+      "verifiers": {
+        "registration": {
+          "address": "0x4250bD1eb89Ef78469f94da2fE7738DCdcb09Ef7",
+          "deployer": "0x3cdff5fDfe43401BDE629faB735B4C9E29bB12Eb",
+          "transactionHash": "0x49c079676e1339af4a98f143c54ebab916138f4e624e6fa0e3295eb704c2d271",
+          "blockNumber": 56818085,
+          "verified": true,
+          "snowtraceUrl": "https://testnet.snowtrace.io/address/0x4250bD1eb89Ef78469f94da2fE7738DCdcb09Ef7",
+          "verifiedAt": "2026-07-06T10:34:20.499Z",
+          "constructorArguments": []
+        },
+        "mint": {
+          "address": "0x0fE395F5E97Ee02c961DE3d035E5De2D9019D15E",
+          "deployer": "0x3cdff5fDfe43401BDE629faB735B4C9E29bB12Eb",
+          "transactionHash": "0xe3c7b4d59cacff621bc10b51427d7d9063ac0599e45ce23655f49afc351a5891",
+          "blockNumber": 56818198,
+          "verified": true,
+          "snowtraceUrl": "https://testnet.snowtrace.io/address/0x0fE395F5E97Ee02c961DE3d035E5De2D9019D15E",
+          "verifiedAt": "2026-07-06T10:34:20.499Z",
+          "constructorArguments": []
+        },
+        "transfer": {
+          "address": "0x4bF3DBD3fF57943dC402ec1F280589E1032A32A5",
+          "deployer": "0x3cdff5fDfe43401BDE629faB735B4C9E29bB12Eb",
+          "transactionHash": "0xe4927873dc5e3ac4bd2edd9d1b28fe3b0aff005db2d1fda814126bd2e92dcd67",
+          "blockNumber": 56818199,
+          "verified": true,
+          "snowtraceUrl": "https://testnet.snowtrace.io/address/0x4bF3DBD3fF57943dC402ec1F280589E1032A32A5",
+          "verifiedAt": "2026-07-06T10:34:20.499Z",
+          "constructorArguments": []
+        },
+        "withdraw": {
+          "address": "0x7E194cb8A575d23f74EEDbEf1b519B281B29c30e",
+          "deployer": "0x3cdff5fDfe43401BDE629faB735B4C9E29bB12Eb",
+          "transactionHash": "0x3d03b50728872375dbf479646014770bb23a450ad16844d47c2ab072e098ad62",
+          "blockNumber": 56818201,
+          "verified": true,
+          "snowtraceUrl": "https://testnet.snowtrace.io/address/0x7E194cb8A575d23f74EEDbEf1b519B281B29c30e",
+          "verifiedAt": "2026-07-06T10:34:20.499Z",
+          "constructorArguments": []
+        },
+        "burn": {
+          "address": "0x1BDfD6cB772D5F882622BaFD7B19898Da9F61d34",
+          "deployer": "0x3cdff5fDfe43401BDE629faB735B4C9E29bB12Eb",
+          "transactionHash": "0x39d852b742902ed4344d946a9695ed16e340ee1c01766c63f9f1638328da7468",
+          "blockNumber": 56818202,
+          "verified": true,
+          "snowtraceUrl": "https://testnet.snowtrace.io/address/0x1BDfD6cB772D5F882622BaFD7B19898Da9F61d34",
+          "verifiedAt": "2026-07-06T10:34:20.499Z",
+          "constructorArguments": []
+        }
+      },
+      "registrar": {
+        "address": "0x9a63FEa9851097DBAf3757b636217fdde50ABaF0",
+        "deployer": "0x3cdff5fDfe43401BDE629faB735B4C9E29bB12Eb",
+        "transactionHash": "0x1cb734305cd89a2c5ba96d846776d3a411ab2697b9de1bb556e88dbfcbbf93e8",
+        "blockNumber": 56818203,
+        "verified": true,
+        "snowtraceUrl": "https://testnet.snowtrace.io/address/0x9a63FEa9851097DBAf3757b636217fdde50ABaF0",
+        "verifiedAt": "2026-07-06T10:34:20.499Z",
+        "constructorArguments": [
+          "0x4250bD1eb89Ef78469f94da2fE7738DCdcb09Ef7"
+        ]
+      },
+      "libraries": {
+        "babyJubJub": {
+          "address": "0x04513c37Fca1FBABA5Bb6Ff9547658b00B35697B",
+          "deployer": "0x3cdff5fDfe43401BDE629faB735B4C9E29bB12Eb",
+          "transactionHash": "0x95e18246af6ae699e9d50b16677b6081829c6ee7046b4f129091ece112e32465",
+          "blockNumber": 56879299,
+          "verified": false,
+          "snowtraceUrl": "https://testnet.snowtrace.io/address/0x04513c37Fca1FBABA5Bb6Ff9547658b00B35697B",
+          "constructorArguments": []
+        }
+      },
+      "encryptedERC": {
+        "address": "0x9E16eD3B799541B4929f7E2014904C65E81035b1",
+        "deployer": "0x3cdff5fDfe43401BDE629faB735B4C9E29bB12Eb",
+        "transactionHash": "0xe555de068647f46541cb8726cf7c83d6f79db25b2c07a3218d5868815b846bbf",
+        "blockNumber": 56879304,
+        "verified": false,
+        "snowtraceUrl": "https://testnet.snowtrace.io/address/0x9E16eD3B799541B4929f7E2014904C65E81035b1",
+        "constructorArguments": [
+          {
+            "registrar": "0x9a63FEa9851097DBAf3757b636217fdde50ABaF0",
+            "isConverter": true,
+            "name": "Benzo Private USDC",
+            "symbol": "bUSDC",
+            "decimals": 6,
+            "mintVerifier": "0x0fE395F5E97Ee02c961DE3d035E5De2D9019D15E",
+            "withdrawVerifier": "0x7E194cb8A575d23f74EEDbEf1b519B281B29c30e",
+            "transferVerifier": "0x4bF3DBD3fF57943dC402ec1F280589E1032A32A5",
+            "burnVerifier": "0x1BDfD6cB772D5F882622BaFD7B19898Da9F61d34"
+          }
+        ],
+        "libraries": {
+          "contracts/eerc/libraries/BabyJubJub.sol:BabyJubJub": "0x04513c37Fca1FBABA5Bb6Ff9547658b00B35697B"
+        }
+      },
+      "auditor": {
+        "address": "0x13b8d12414dd468a9eCbA24d0a162C17affd6D32",
+        "publicKey": [
+          "810175672526294575885475549934594721208819041472620693405191486263892615602",
+          "1402565102251890881163208877444069126319030795019609887052654837399215250328"
+        ],
+        "registrationTxHash": "0xb6ff75a2e55abeb3e22a65b1ee2dc64bddb670d17ed948366706f461c90b9bb2",
+        "setAuditorPublicKeyTxHash": "0x6f5d68c05082ce1f7bfb3cc57a1dd533d1ba83f11c3ab7cbd75dfe4b2ae05dfa",
+        "setAuditorPublicKeyBlockNumber": 56879309,
+        "keyFile": ".auditor-key.local.json",
+        "custodyNote": "Operator must custody the BabyJubJub privateKey in contracts/.auditor-key.local.json until M3 sealed storage imports it."
+      },
+      "tokens": {
+        "USDC": {
+          "address": "0x5425890298aed601595a70AB815c96711a31Bc65",
+          "decimals": 6,
+          "tokenId": 1,
+          "symbol": "USDC"
+        },
+        "EURC": {
+          "address": "0x5E44db7996c682E92a960b65AC713a54AD815c6B",
+          "decimals": 6,
+          "tokenId": 2,
+          "symbol": "EURC"
+        }
+      }
+    },
+    "PrivateGiftEscrow": {
+      "address": "0x0B1f4e78C54E7696663b62F9cD7956f5FDE5b71d",
+      "authorizeDepositorTxHash": "0x8d3a3b5c05d78bbc4643f0cac95780c39e86b69c67cd7c2190236ea067b5fca4",
+      "blockNumber": 56894868,
+      "constructorArguments": [
+        "0x9E16eD3B799541B4929f7E2014904C65E81035b1"
+      ],
+      "deployer": "0x3cdff5fDfe43401BDE629faB735B4C9E29bB12Eb",
+      "eercAddress": "0x9E16eD3B799541B4929f7E2014904C65E81035b1",
+      "snowtraceUrl": "https://testnet.snowtrace.io/address/0x0B1f4e78C54E7696663b62F9cD7956f5FDE5b71d",
+      "transactionHash": "0xf3aba20770bbf856553c759542b38528bd37024f8b70fe6c67cd92372b1e5e1d",
+      "verified": false
+    },
+    "benzoCctpRouter": {
+      "address": "0x4b4f0dc760115DB356Cdfa89b4950E3418a3d98d",
+      "deployer": "0x3cdff5fDfe43401BDE629faB735B4C9E29bB12Eb",
+      "transactionHash": "0x82f51119995b3c9ec80b12c6e6d1de8af219e29b0429c18bec913095b8b45ba2",
+      "blockNumber": 56897892,
+      "snowtraceUrl": "https://testnet.snowtrace.io/address/0x4b4f0dc760115DB356Cdfa89b4950E3418a3d98d",
+      "constructorArguments": [
+        "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275",
+        "0x9E16eD3B799541B4929f7E2014904C65E81035b1",
+        "0x9a63FEa9851097DBAf3757b636217fdde50ABaF0"
+      ],
+      "verified": false
+    }
+  },
+  "network": "fuji"
+}

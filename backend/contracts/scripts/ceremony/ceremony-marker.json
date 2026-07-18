@@ -1,0 +1,31 @@
+{
+  "build": "ceremony",
+  "provingSystem": "groth16",
+  "contributions": 3,
+  "beacon": "0xaf5de6fc51cc6adf6b82231983873c4902ef20be2c054d8f823b3261aa6109f7",
+  "ptau": "powers-of-tau-15.ptau",
+  "transcriptUrl": "https://raw.githubusercontent.com/Miny-Labs/benzo/main/docs/ceremony/transcript.md",
+  "note": "Production Groth16 phase-2 ceremony. Publish the transcript/attestations at transcriptUrl and regenerate the browser .wasm/.zkey + packages/config/public/circuits/manifest.json from these final zkeys.",
+  "verifiers": {
+    "registration": {
+      "source": "contracts/contracts/verifiers/RegistrationCircuitGroth16Verifier.sol",
+      "sha256": "5ecb819804d7b7959e46a4140fc7aad8eb7a38f760762f4124d0fd1aa778486b"
+    },
+    "transfer": {
+      "source": "contracts/contracts/verifiers/TransferCircuitGroth16Verifier.sol",
+      "sha256": "13676fa7a3cdb2d11d3ba47ef5a681333fc870f1e7a084a5debe1622268104c4"
+    },
+    "mint": {
+      "source": "contracts/contracts/verifiers/MintCircuitGroth16Verifier.sol",
+      "sha256": "231883ffdbbf7ddc9aa2eead3167d79eafb84a13c3cf32812aa0275ac619412b"
+    },
+    "withdraw": {
+      "source": "contracts/contracts/verifiers/WithdrawCircuitGroth16Verifier.sol",
+      "sha256": "103e1eec95406279f69f4909ef4d1e3275f79160f9996c4e28042897df236e5d"
+    },
+    "burn": {
+      "source": "contracts/contracts/verifiers/BurnCircuitGroth16Verifier.sol",
+      "sha256": "431130b8e6b62bd7a76fbfdb7ceb7b6afe979d8aff7da9b03326efe0e5306271"
+    }
+  }
+}

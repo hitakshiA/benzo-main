@@ -1,0 +1,78 @@
+# --- secrets (never commit) ---
+.env
+.env.*
+!.env.example
+# Per-tier env templates (placeholder values only; committed for reference).
+!.env.staging.example
+!.env.production.example
+# Caddy basic_auth hash file (its own env_file; .example is committed).
+infra/vm/caddy/grafana-auth.env
+# Operator-enabled Caddy sites (sites-available/ is committed).
+infra/vm/caddy/sites-enabled/*.caddy
+# node-exporter textfile metrics written at runtime.
+infra/vm/prometheus/textfile/*.prom
+
+# --- BenzoNet VM binaries (operator-installed subnet-evm plugin) ---
+infra/vm/plugins/*
+!infra/vm/plugins/.gitkeep
+
+# --- node / ts ---
+node_modules/
+.pnpm-store/
+dist/
+build/
+*.tsbuildinfo
+
+# --- hardhat / solidity ---
+artifacts/
+cache/
+typechain-types/
+coverage/
+coverage.json
+
+# --- zk artifacts (large / generated; rebuild with hardhat zkit) ---
+zkit/
+generated-types/
+*.zkey
+*.wasm
+*.ptau
+*.wtns
+*.r1cs
+packages/config/public/circuits/
+services/api/zk-artifacts/
+
+# --- os / editor ---
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# vendored reference material (present locally, not committed)
+reference/
+
+# retired Stellar-era local material (untracked leftovers; tracked code lives at fbb4d4e)
+ceremony/
+# ...but the mainnet trusted-setup ceremony tooling (#121) IS committed code.
+!contracts/scripts/ceremony/
+test-results/
+target/
+
+# --- agent / tooling internal (kept locally, not part of the codebase) ---
+.claude/
+CLAUDE.md
+AGENTS.md
+.impeccable.md
+.mcp.json
+.neon
+
+# --- internal planning / marketing / demo docs (kept locally for context) ---
+# The mainnet go/no-go checklist and the live deployment record are committed
+# deliverables; everything else under docs/ stays local.
+docs/*
+!docs/MAINNET_GO_NO_GO.md
+!docs/DEPLOYMENTS.md
+
+# --- heavy binary doc artifacts (regenerable) ---
+*.pptx
+*.pdf
+.vercel

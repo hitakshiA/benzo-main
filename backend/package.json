@@ -1,0 +1,21 @@
+{
+  "name": "benzo-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Benzo: private USDC payments on Avalanche (eERC)",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "compile": "pnpm --filter @benzo/contracts compile",
+    "seed": "pnpm --filter @benzo/contracts seed",
+    "test": "pnpm -r test",
+    "lint": "biome lint",
+    "lint:fix": "biome lint --write"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.0"
+  }
+}

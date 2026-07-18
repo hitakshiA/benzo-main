@@ -1,0 +1,1382 @@
+import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
+import type { FastifyPluginAsync } from "fastify";
+import { getAddress, isAddress, pad, type Hex } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { z } from "zod";
+import type {
+	AdminChainClient,
+	AllowlistActionResult,
+	AllowlistStatus,
+} from "../admin/chain.js";
+import type { ApiConfig, TreasuryFundingToken } from "../config.js";
+import type { Database } from "../db/client.js";
+import { sealString, unsealString } from "../crypto/seal.js";
+import {
+	auditLog,
+	kycRecords,
+	onboardings,
+	onrampIntents,
+	orgMemberAllowlist,
+	orgMembers,
+	orgTreasuries,
+	orgs,
+	treasuryDeposits,
+	users,
+	type OnboardingStatus,
+	type OnrampStatus,
+	type OrgMemberAllowlistStatus,
+	type TreasuryDepositStatus,
+} from "../db/schema.js";
+import {
+	ROLE_RANK,
+	loadMembership,
+	makeRequireOrgRole,
+} from "../orgs/access.js";
+import type { OnboardingChainClient } from "../onboarding/chain.js";
+import { resolveSourceDomain } from "../onramp/domains.js";
+import {
+	FUND_SOURCE_CHAINS,
+	resolveTreasuryFundSource,
+} from "../onramp/fundsource.js";
+import { encodeOnrampHookData } from "../onramp/hookdata.js";
+import { createIntent, serializeIntent } from "../onramp/service.js";
+import {
+	createManagedEercAccount,
+	deserializeManagedEercAccount,
+	encryptAmountPct,
+	getDecryptedBalance,
+	serializeManagedEercAccount,
+	type ManagedEercAccount,
+} from "../payroll/eerc.js";
+import type {
+	PayrollSubmitter,
+	TreasuryDepositSubmissionResult,
+	TreasuryRegistrar,
+} from "../payroll/chain.js";
+
+type OrgsRoutesOptions = {
+	adminChain: AdminChainClient;
+	config: ApiConfig;
+	db: Database;
+	onboardingChain: OnboardingChainClient;
+	payrollSubmitter: PayrollSubmitter;
+	treasuryRegistrar: TreasuryRegistrar;
+};
+
+const createOrgSchema = z.object({
+	name: z.string().trim().min(1).max(120),
+	slug: z
+		.string()
+		.trim()
+		.min(1)
+		.max(60)
+		.regex(/^[a-z0-9-]+$/, "slug must be lowercase alphanumeric or hyphen"),
+});
+
+const addMemberSchema = z.object({
+	address: z.string().trim().toLowerCase(),
+	role: z.enum(["admin", "operator", "viewer"]),
+});
+
+const provisionTreasurySchema = z.object({
+	// Managed-treasury custody is an explicit consent moment: the caller must
+	// acknowledge that Benzo will hold this treasury key on its servers.
+	consent: z.literal(true),
+});
+
+const treasuryDepositSchema = z.object({
+	amount: z.string().trim().regex(/^[1-9][0-9]*$/),
+	// Required dedupe token: a money-movement deposit must be safe to retry, so
+	// callers always supply a key. A retry carrying a previously seen key returns
+	// the original deposit instead of broadcasting a second approve/deposit.
+	idempotencyKey: z.string().trim().min(1).max(255),
+	token: z.enum(["usdc", "eurc"]),
+});
+
+const fundIntentSchema = z.object({
+	// A CCTP source chain from @benzo/config (resolved authoritatively below).
+	sourceChain: z.enum(FUND_SOURCE_CHAINS),
+	token: z.enum(["usdc", "eurc"]),
+	amount: z.string().trim().regex(/^[1-9][0-9]*$/),
+	// The signed source-chain burn tx. Omitted on a preview (params only); when
+	// present, a pending CCTP transfer is recorded for the relayer to finalize.
+	sourceTxHash: z
+		.string()
+		.trim()
+		.regex(/^0x[0-9a-fA-F]{64}$/)
+		.optional(),
+});
+
+// Unified deposits view is paginated so a large org can't pull every row into
+// memory (CCTP intents accumulate even on failed/parked transfers). `before` is
+// the createdAt ISO cursor returned as `nextCursor` on the previous page.
+const DEPOSITS_PAGE_MAX = 200;
+const depositsQuerySchema = z.object({
+	before: z.string().datetime().optional(),
+	limit: z.coerce.number().int().min(1).max(DEPOSITS_PAGE_MAX).default(50),
+});
+
+// CCTP V2 fast-transfer tuning for the treasury-funding burn — mirrors the user
+// onramp quote: minFinalityThreshold 2000 = standard (hard-finality) transfer,
+// which needs no per-transfer fee. These are CCTP protocol params.
+const TREASURY_FUND_MAX_FEE = "0";
+const TREASURY_FUND_MIN_FINALITY_THRESHOLD = 2000;
+
+const evmAddress = /^0x[0-9a-fA-F]{40}$/;
+const approvedKycOnboardingStatuses = new Set<OnboardingStatus>([
+	"kyc_approved",
+	"allowlisted",
+	"gas_dripped",
+	"awaiting_registration",
+	"complete",
+]);
+
+export const orgsRoutes: FastifyPluginAsync<OrgsRoutesOptions> = async (
+	fastify,
+	options,
+) => {
+	const { db } = options;
+	const requireOrgRole = makeRequireOrgRole(fastify, db);
+
+	// POST /orgs — create an org; the creator becomes its owner.
+	fastify.post(
+		"/orgs",
+		{ preHandler: fastify.requireAuth },
+		async (request, reply) => {
+			const body = createOrgSchema.safeParse(request.body);
+			if (!body.success) {
+				return reply.code(400).send({ error: "invalid_org" });
+			}
+
+			const userId = request.user!.id;
+			const created = await db.transaction(async (tx) => {
+				// ON CONFLICT DO NOTHING on the unique slug: a taken slug (or a race
+				// between two creators) returns no row and maps to 409 below, instead
+				// of the raw 23505 escaping the transaction as a 500.
+				const [org] = await tx
+					.insert(orgs)
+					.values({ name: body.data.name, slug: body.data.slug })
+					.onConflictDoNothing({ target: orgs.slug })
+					.returning();
+				if (!org) {
+					return null;
+				}
+				await tx
+					.insert(orgMembers)
+					.values({ orgId: org.id, userId, role: "owner" });
+				return org;
+			});
+
+			if (!created) {
+				return reply.code(409).send({ error: "slug_taken" });
+			}
+
+			return reply.code(201).send({ org: created, role: "owner" });
+		},
+	);
+
+	// GET /orgs — orgs the caller belongs to, with their role in each.
+	fastify.get(
+		"/orgs",
+		{ preHandler: fastify.requireAuth },
+		async (request, reply) => {
+			const userId = request.user!.id;
+			const rows = await db
+				.select({
+					id: orgs.id,
+					name: orgs.name,
+					slug: orgs.slug,
+					role: orgMembers.role,
+					createdAt: orgs.createdAt,
+				})
+				.from(orgMembers)
+				.innerJoin(orgs, eq(orgMembers.orgId, orgs.id))
+				.where(eq(orgMembers.userId, userId));
+			return reply.send({ orgs: rows });
+		},
+	);
+
+	// GET /orgs/:id — org detail; any member may read.
+	fastify.get(
+		"/orgs/:id",
+		{ preHandler: requireOrgRole("viewer") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+			const [org] = await db
+				.select()
+				.from(orgs)
+				.where(eq(orgs.id, orgId))
+				.limit(1);
+			return reply.send({ org, role: request.orgRole });
+		},
+	);
+
+	// GET /orgs/:id/members — any member may list.
+	fastify.get(
+		"/orgs/:id/members",
+		{ preHandler: requireOrgRole("viewer") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+			const members = await db
+				.select({
+					userId: orgMembers.userId,
+					role: orgMembers.role,
+					createdAt: orgMembers.createdAt,
+				})
+				.from(orgMembers)
+				.where(eq(orgMembers.orgId, orgId));
+			return reply.send({ members });
+		},
+	);
+
+	// POST /orgs/:id/members — add/update a member by wallet address (admin+).
+	fastify.post(
+		"/orgs/:id/members",
+		{ preHandler: requireOrgRole("admin") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+			const body = addMemberSchema.safeParse(request.body);
+			if (!body.success || !evmAddress.test(body.data.address)) {
+				return reply.code(400).send({ error: "invalid_member" });
+			}
+
+			// The member must already be a known user (they sign in via SIWE first).
+			const user = await db.query.users.findFirst({
+				where: (u, { eq: eqOp }) => eqOp(u.address, body.data.address),
+			});
+			if (!user) {
+				return reply.code(404).send({ error: "user_not_found" });
+			}
+
+			// A caller may not modify a member whose current role outranks or
+			// equals their own — otherwise an admin could demote the owner (whom
+			// they can never restore, since "owner" isn't a settable role). This
+			// also blocks demoting/self-editing at the same rank.
+			const existingRole = await loadMembership(db, orgId, user.id);
+			const callerRole = request.orgRole!;
+			if (
+				existingRole !== null &&
+				ROLE_RANK[existingRole] >= ROLE_RANK[callerRole]
+			) {
+				return reply.code(403).send({ error: "forbidden" });
+			}
+
+			await db
+				.insert(orgMembers)
+				.values({ orgId, userId: user.id, role: body.data.role })
+				.onConflictDoUpdate({
+					target: [orgMembers.orgId, orgMembers.userId],
+					set: { role: body.data.role },
+				});
+
+			return reply.code(201).send({ userId: user.id, role: body.data.role });
+		},
+	);
+
+	fastify.get(
+		"/orgs/:id/members/:address/allowlist",
+		{ preHandler: requireOrgRole("viewer") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+			const address = normalizeMemberAddress(
+				(request.params as { address: string }).address,
+			);
+			if (!address) {
+				return reply.code(400).send({ error: "invalid_member" });
+			}
+
+			const member = await loadOrgMemberAllowlist(options.db, orgId, address);
+			if (!member) {
+				return reply.code(404).send({ error: "member_not_found" });
+			}
+
+			const chain = await options.adminChain.getAllowlistStatus(member.address);
+
+			return reply.send({
+				allowlist: serializeMemberAllowlist(member, chain),
+			});
+		},
+	);
+
+	fastify.post(
+		"/orgs/:id/members/:address/allowlist",
+		{ preHandler: requireOrgRole("admin") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+			const address = normalizeMemberAddress(
+				(request.params as { address: string }).address,
+			);
+			if (!address) {
+				return reply.code(400).send({ error: "invalid_member" });
+			}
+
+			const member = await loadOrgMemberAllowlist(options.db, orgId, address);
+			if (!member) {
+				return reply.code(404).send({ error: "member_not_found" });
+			}
+			if (!member.kyc.approved) {
+				return reply.code(409).send({
+					error: "kyc_not_approved",
+					kyc: member.kyc,
+				});
+			}
+
+			// Durably record intent BEFORE the irreversible on-chain call, so a
+			// crash between the on-chain mutation and the finalizing DB write
+			// leaves a recoverable `pending` row instead of an untracked change.
+			await recordMemberAllowlistIntent(options.db, member);
+			const result = await options.adminChain.applyAllowlist(
+				member.address,
+				"enable",
+			);
+			const updatedMember = withAllowlistChange(member, "enabled", result);
+			await recordMemberAllowlistChange({
+				action: "enable",
+				actor: request.user!.address,
+				chainEnv: options.config.chainEnv,
+				chainId: options.config.benzonetChainId,
+				db: options.db,
+				member,
+				result,
+			});
+
+			return reply.send({
+				allowlist: serializeMemberAllowlist(
+					updatedMember,
+					allowlistResultToStatus(result),
+					result,
+				),
+			});
+		},
+	);
+
+	fastify.delete(
+		"/orgs/:id/members/:address/allowlist",
+		{ preHandler: requireOrgRole("admin") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+			const address = normalizeMemberAddress(
+				(request.params as { address: string }).address,
+			);
+			if (!address) {
+				return reply.code(400).send({ error: "invalid_member" });
+			}
+
+			const member = await loadOrgMemberAllowlist(options.db, orgId, address);
+			if (!member) {
+				return reply.code(404).send({ error: "member_not_found" });
+			}
+
+			// Durably record intent BEFORE the irreversible on-chain call. Without
+			// this, a failed post-revoke DB write would leave the row asserting the
+			// now-false `enabled` state; the `pending` row instead flags the change
+			// as in-flight until the finalizing write lands.
+			await recordMemberAllowlistIntent(options.db, member);
+			const result = await options.adminChain.applyAllowlist(
+				member.address,
+				"revoke",
+			);
+			const updatedMember = withAllowlistChange(member, "revoked", result);
+			await recordMemberAllowlistChange({
+				action: "revoke",
+				actor: request.user!.address,
+				chainEnv: options.config.chainEnv,
+				chainId: options.config.benzonetChainId,
+				db: options.db,
+				member,
+				result,
+			});
+
+			return reply.send({
+				allowlist: serializeMemberAllowlist(
+					updatedMember,
+					allowlistResultToStatus(result),
+					result,
+				),
+			});
+		},
+	);
+
+	// POST /orgs/:id/treasury — provision the managed treasury (owner/admin).
+	// Generates an EOA, records custody consent, onboards the address, registers
+	// it with eERC, and seals both server-held keys under APP_MASTER_KEY.
+	fastify.post(
+		"/orgs/:id/treasury",
+		{ preHandler: requireOrgRole("admin") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+			const body = provisionTreasurySchema.safeParse(request.body);
+			if (!body.success) {
+				return reply.code(400).send({ error: "consent_required" });
+			}
+
+			let createdTreasury = false;
+			let treasury = await db.query.orgTreasuries.findFirst({
+				where: (table, { eq: eqOp }) => eqOp(table.orgId, orgId),
+			});
+
+			if (treasury?.eercRegisteredAt) {
+				return reply.code(409).send({ error: "treasury_exists" });
+			}
+
+			if (!treasury) {
+				const privateKey = generatePrivateKey();
+				const account = privateKeyToAccount(privateKey);
+				const sealedEoaKey = sealString(
+					options.config.appMasterKey,
+					privateKey,
+				);
+
+				// Atomic: the unique index on org_id makes this race-safe. A second
+				// concurrent request conflicts and returns no row (409) instead of
+				// throwing on the constraint; the losing request's generated key was
+				// never persisted, so nothing leaks.
+				const [inserted] = await db
+					.insert(orgTreasuries)
+					.values({
+						address: account.address.toLowerCase(),
+						consentedAt: new Date(),
+						consentedBy: request.user!.id,
+						orgId,
+						sealedEoaKey,
+					})
+					.onConflictDoNothing({ target: orgTreasuries.orgId })
+					.returning();
+
+				if (!inserted) {
+					return reply.code(409).send({ error: "treasury_exists" });
+				}
+
+				createdTreasury = true;
+				treasury = inserted;
+			}
+
+			const eoaPrivateKey = unsealString(
+				options.config.appMasterKey,
+				treasury.sealedEoaKey,
+			) as `0x${string}`;
+			const eercAccount = await loadOrCreateTreasuryEercAccount(
+				db,
+				options.config,
+				treasury.id,
+				treasury.sealedEercKey,
+			);
+
+			await options.onboardingChain.ensureAllowlisted(treasury.address);
+			const balance = await options.onboardingChain.getNativeBalance(
+				treasury.address,
+			);
+			if (balance < options.config.dripBalanceThresholdWei) {
+				await options.onboardingChain.dripGas(
+					treasury.address,
+					options.config.dripWei,
+				);
+			}
+
+			const registration = await options.treasuryRegistrar.registerTreasury({
+				address: treasury.address,
+				eercAccount,
+				eoaPrivateKey,
+			});
+			// Persist the consent moment on every registration path. The insert
+			// branch already stamps consent, but an existing (pre-consent) treasury
+			// row reaching this point consented via this request's `consent: true`
+			// body — record it without clobbering an earlier timestamp.
+			await db
+				.update(orgTreasuries)
+				.set({
+					consentedAt: treasury.consentedAt ?? new Date(),
+					consentedBy: treasury.consentedBy ?? request.user!.id,
+					eercRegisteredAt: new Date(),
+				})
+				.where(eq(orgTreasuries.id, treasury.id));
+
+			return reply.code(createdTreasury ? 201 : 200).send({
+				address: getAddress(treasury.address),
+				custody: "managed",
+				consented: true,
+				registered: true,
+				registrationTxHash: registration.txHash,
+			});
+		},
+	);
+
+	// POST /orgs/:id/treasury/deposit — convert ERC20 into encrypted treasury
+	// balance. The managed EOA key is unsealed only for signing approve/deposit.
+	fastify.post(
+		"/orgs/:id/treasury/deposit",
+		{ preHandler: requireOrgRole("admin") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+			const body = treasuryDepositSchema.safeParse(request.body);
+			if (!body.success) {
+				return reply.code(400).send({ error: "invalid_treasury_deposit" });
+			}
+
+			const token = resolveFundingToken(options.config, body.data.token);
+			if (!token) {
+				return reply.code(503).send({ error: "treasury_token_not_configured" });
+			}
+
+			const treasury = await db.query.orgTreasuries.findFirst({
+				where: (table, { eq: eqOp }) => eqOp(table.orgId, orgId),
+			});
+			if (!treasury) {
+				return reply.code(404).send({ error: "treasury_not_found" });
+			}
+			if (!treasury.eercRegisteredAt || !treasury.sealedEercKey) {
+				return reply
+					.code(409)
+					.send({ error: "treasury_not_eerc_registered" });
+			}
+
+			const amount = BigInt(body.data.amount);
+			const idempotencyKey = body.data.idempotencyKey;
+
+			// Idempotency: a retry reusing a key we've already recorded for this org
+			// returns the original record instead of broadcasting a second deposit.
+			const existing = await db.query.treasuryDeposits.findFirst({
+				where: (table, { and: andOp, eq: eqOp }) =>
+					andOp(
+						eqOp(table.orgId, orgId),
+						eqOp(table.idempotencyKey, idempotencyKey),
+					),
+			});
+			// An idempotency key is bound to its request: reusing it with a
+			// different amount or token is a distinct funding action, not a retry,
+			// and must be rejected rather than silently resolving to the original.
+			if (
+				existing &&
+				(existing.amount !== amount.toString() ||
+					existing.token !== token.token)
+			) {
+				return reply.code(409).send({ error: "idempotency_key_conflict" });
+			}
+			// A keyed retry is resumable (re-attempts the funding, re-claiming the
+			// existing row) when either: (a) the previous attempt `failed` — a
+			// reverted approve/deposit moved no funds, so retrying with the same key
+			// is safe; or (b) it is `submitted` with no txHash and older than the
+			// lease, meaning it crashed BEFORE broadcasting (sign-first guarantees a
+			// null hash => not broadcast). A recent null-hash row is still in-flight
+			// (202); a confirmed or hash-bearing submitted row is terminal.
+			const TREASURY_DEPOSIT_LEASE_MS = 90_000;
+			const resumable =
+				existing != null &&
+				(existing.status === "failed" ||
+					(existing.status === "submitted" &&
+						!existing.txHash &&
+						Date.now() - existing.updatedAt.getTime() >
+							TREASURY_DEPOSIT_LEASE_MS));
+			if (existing && !resumable) {
+				const inFlightPreBroadcast =
+					existing.status === "submitted" && !existing.txHash;
+				return reply.code(inFlightPreBroadcast ? 202 : 200).send({
+					amount: existing.amount,
+					source: existing.source,
+					status: existing.status,
+					token: existing.token,
+					tokenId: existing.tokenId.toString(),
+					txHash: existing.txHash,
+				});
+			}
+
+			const eoaPrivateKey = unsealString(
+				options.config.appMasterKey,
+				treasury.sealedEoaKey,
+			) as `0x${string}`;
+			const eercAccount = deserializeManagedEercAccount(
+				unsealString(options.config.appMasterKey, treasury.sealedEercKey),
+			);
+
+			// Durably record intent BEFORE the irreversible approve/deposit. On
+			// resume, re-claim the row under a SELECT ... FOR UPDATE row lock so two
+			// concurrent retries can't both broadcast. A row lock is used instead of
+			// an updatedAt-equality guard because Postgres timestamptz precision does
+			// not round-trip through a JS Date, so an equality guard would never match
+			// and would strand every resume at 202.
+			let pendingId: string;
+			if (resumable && existing) {
+				const claimedId = await db.transaction(async (tx) => {
+					const [locked] = await tx
+						.select()
+						.from(treasuryDeposits)
+						.where(eq(treasuryDeposits.id, existing.id))
+						.for("update");
+					const stillResumable =
+						locked != null &&
+						(locked.status === "failed" ||
+							(locked.status === "submitted" &&
+								!locked.txHash &&
+								Date.now() - locked.updatedAt.getTime() >
+									TREASURY_DEPOSIT_LEASE_MS));
+					if (!stillResumable) {
+						return null;
+					}
+					await tx
+						.update(treasuryDeposits)
+						.set({ status: "submitted", txHash: null, updatedAt: new Date() })
+						.where(eq(treasuryDeposits.id, existing.id));
+					return existing.id;
+				});
+				if (!claimedId) {
+					// Another request claimed the resume, or it is no longer resumable.
+					return reply.code(202).send({
+						amount: existing.amount,
+						source: existing.source,
+						status: "submitted",
+						token: existing.token,
+						tokenId: existing.tokenId.toString(),
+						txHash: null,
+					});
+				}
+				pendingId = claimedId;
+			} else {
+				const [pending] = await db
+					.insert(treasuryDeposits)
+					.values({
+						amount: amount.toString(),
+						idempotencyKey,
+						orgId,
+						source: "direct",
+						status: "submitted",
+						token: token.token,
+						tokenId: token.tokenId,
+					})
+					.returning({ id: treasuryDeposits.id });
+				pendingId = pending!.id;
+			}
+
+			// Captured the moment the deposit tx is broadcast (before the
+			// confirmation wait). Once set, the tx may have landed on-chain, so a
+			// later failure must never mark the row `failed`.
+			let broadcastTxHash: Hex | null = null;
+			let result: TreasuryDepositSubmissionResult;
+			try {
+				result = await options.payrollSubmitter.submitTreasuryDeposit({
+					amount,
+					amountPCT: encryptAmountPct(amount, eercAccount.publicKey),
+					confirmations: options.config.indexerConfirmations,
+					eoaPrivateKey,
+					onBeforeBroadcast: async (h) => {
+						// Called AFTER signing, BEFORE sending. Persist the hash first,
+						// then flag it: with sign-first, if this persist throws the tx is
+						// never sent, so leaving broadcastTxHash null makes the catch mark
+						// the row `failed` (correct — nothing was broadcast, safe to retry).
+						await db
+							.update(treasuryDeposits)
+							.set({ txHash: h.toLowerCase(), updatedAt: new Date() })
+							.where(eq(treasuryDeposits.id, pendingId));
+						broadcastTxHash = h;
+					},
+					tokenAddress: token.address,
+				});
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "";
+				if (message === "treasury_deposit_send_rejected") {
+					// The signed tx was rejected by the node and never entered the mempool.
+					// Clear the pre-persisted hash so the row is resumable (a keyed retry
+					// re-signs and re-sends) rather than stranded `submitted` with a dead hash.
+					await db
+						.update(treasuryDeposits)
+						.set({ status: "submitted", txHash: null, updatedAt: new Date() })
+						.where(eq(treasuryDeposits.id, pendingId));
+					request.log.warn({ err: error, orgId }, "treasury_deposit_send_rejected");
+					return reply.code(202).send({
+						amount: amount.toString(),
+						source: "direct",
+						status: "submitted",
+						token: token.token,
+						tokenId: token.tokenId.toString(),
+						txHash: null,
+					});
+				}
+				const reverted =
+					message === "treasury_deposit_reverted" ||
+					message === "treasury_deposit_approval_reverted";
+
+				if (reverted) {
+					// A confirmed on-chain revert is terminal — the funding did not happen,
+					// so mark the row `failed` instead of leaving it `submitted` as if it
+					// might still settle.
+					await db
+						.update(treasuryDeposits)
+						.set({ status: "failed", updatedAt: new Date() })
+						.where(eq(treasuryDeposits.id, pendingId));
+					request.log.error(
+						{ err: error, orgId, txHash: broadcastTxHash },
+						"treasury_deposit_reverted",
+					);
+					return reply.code(502).send({ error: "treasury_deposit_reverted" });
+				}
+
+				if (broadcastTxHash) {
+					// Deposit signed, hash persisted, and sent, but the confirmation wait
+					// failed transiently; it may still settle. Leave `submitted` with the
+					// hash so a reconciler can settle it and no money is lost.
+					request.log.warn(
+						{ err: error, orgId, txHash: broadcastTxHash },
+						"treasury_deposit_broadcast_unconfirmed",
+					);
+					return reply.code(202).send({
+						amount: amount.toString(),
+						source: "direct",
+						status: "submitted",
+						token: token.token,
+						tokenId: token.tokenId.toString(),
+						txHash: broadcastTxHash,
+					});
+				}
+
+				// No deposit hash and not a revert: a transient failure before the deposit
+				// was broadcast (e.g. an approve-receipt timeout). Leave the row `submitted`
+				// (null hash) so a keyed retry resumes rather than being stranded `failed`.
+				request.log.warn(
+					{ err: error, orgId },
+					"treasury_deposit_prebroadcast_unconfirmed",
+				);
+				return reply.code(202).send({
+					amount: amount.toString(),
+					source: "direct",
+					status: "submitted",
+					token: token.token,
+					tokenId: token.tokenId.toString(),
+					txHash: null,
+				});
+			}
+
+			await db
+				.update(treasuryDeposits)
+				.set({
+					status: "confirmed",
+					txHash: result.txHash.toLowerCase(),
+					updatedAt: new Date(),
+				})
+				.where(eq(treasuryDeposits.id, pendingId));
+
+			return reply.code(201).send({
+				amount: amount.toString(),
+				approvalTxHash: result.approvalTxHash,
+				source: "direct",
+				status: "confirmed",
+				token: token.token,
+				tokenId: token.tokenId.toString(),
+				txHash: result.txHash,
+			});
+		},
+	);
+
+	// GET /orgs/:id/treasury — custody status; never returns key material.
+	fastify.get(
+		"/orgs/:id/treasury",
+		{ preHandler: requireOrgRole("viewer") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+			// Push the "registered" boolean into the query so status reads don't
+			// need any key material.
+			const [treasury] = await db
+				.select({
+					address: orgTreasuries.address,
+					consentedAt: orgTreasuries.consentedAt,
+					consentedBy: orgTreasuries.consentedBy,
+					eercRegisteredAt: orgTreasuries.eercRegisteredAt,
+					sealedEercKey: orgTreasuries.sealedEercKey,
+				})
+				.from(orgTreasuries)
+				.where(eq(orgTreasuries.orgId, orgId))
+				.limit(1);
+
+			if (!treasury) {
+				return reply.code(404).send({ error: "treasury_not_found" });
+			}
+
+			const registered = treasury.eercRegisteredAt !== null;
+			const balances =
+				registered && treasury.sealedEercKey
+					? await loadTreasuryBalances({
+							config: options.config,
+							eercKey: treasury.sealedEercKey,
+							submitter: options.payrollSubmitter,
+							treasuryAddress: treasury.address,
+						})
+					: [];
+
+			return reply.send({
+				address: getAddress(treasury.address),
+				balances,
+				custody: "managed",
+				custodyConsent: {
+					consented: treasury.consentedAt !== null,
+					consentedAt: treasury.consentedAt?.toISOString() ?? null,
+					consentedBy: treasury.consentedBy,
+				},
+				consented: treasury.consentedAt !== null,
+				registered,
+			});
+		},
+	);
+
+	// POST /orgs/:id/treasury/fund-intent — cross-chain treasury funding (#114).
+	// Returns the exact depositForBurnWithHook params for the source chain so the
+	// org's funding wallet signs ONE burn whose CCTP mint hook auto-deposits into
+	// the TREASURY's encrypted eERC balance (hookData carries the treasury pubkey).
+	// With a sourceTxHash it also records a pending CCTP transfer that the existing
+	// onramp relayer finalizes into a `treasury_deposits` (source='cctp') row.
+	fastify.post(
+		"/orgs/:id/treasury/fund-intent",
+		{ preHandler: requireOrgRole("admin") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+			const body = fundIntentSchema.safeParse(request.body);
+			if (!body.success) {
+				return reply.code(400).send({ error: "invalid_fund_intent" });
+			}
+
+			// The router is the CCTP mintRecipient/destinationCaller; without its
+			// address the quote can't be built, so fail clearly (mirrors the onramp
+			// quote) rather than emitting an unusable burn.
+			const router = options.config.autoDepositRouterAddress;
+			if (!router) {
+				return reply.code(503).send({ error: "router_not_configured" });
+			}
+
+			// The destination treasury token must be configured so a credited funding
+			// can be mapped to an eERC tokenId and recorded as a deposit.
+			const destToken = resolveFundingToken(options.config, body.data.token);
+			if (!destToken) {
+				return reply
+					.code(503)
+					.send({ error: "treasury_token_not_configured" });
+			}
+
+			// Source chain + per-chain token availability + domain come from
+			// @benzo/config; reject unsupported chain/token combos (e.g. EURC on
+			// Arbitrum/Optimism, which carry USDC only).
+			const source = resolveTreasuryFundSource(
+				options.config.tier,
+				body.data.sourceChain,
+				body.data.token,
+			);
+			if (!source.ok) {
+				return reply.code(400).send({ error: source.error });
+			}
+
+			const treasury = await db.query.orgTreasuries.findFirst({
+				where: (table, { eq: eqOp }) => eqOp(table.orgId, orgId),
+			});
+			if (!treasury) {
+				return reply.code(404).send({ error: "treasury_not_found" });
+			}
+			if (!treasury.eercRegisteredAt || !treasury.sealedEercKey) {
+				return reply
+					.code(409)
+					.send({ error: "treasury_not_eerc_registered" });
+			}
+
+			const eercAccount = deserializeManagedEercAccount(
+				unsealString(options.config.appMasterKey, treasury.sealedEercKey),
+			);
+			const treasuryAddress = getAddress(treasury.address);
+			const [pubKeyX, pubKeyY] = eercAccount.publicKey;
+
+			// CCTP mintRecipient/destinationCaller are bytes32; a 20-byte EVM address
+			// is left-padded to 32 bytes.
+			const routerBytes32 = pad(getAddress(router) as Hex, { size: 32 });
+			const burn = {
+				amount: body.data.amount,
+				burnToken: source.source.burnToken,
+				destinationCaller: routerBytes32,
+				destinationDomain: options.config.cctpDestDomain,
+				hookData: encodeOnrampHookData({
+					pkX: pubKeyX,
+					pkY: pubKeyY,
+					user: treasuryAddress,
+				}),
+				maxFee: TREASURY_FUND_MAX_FEE,
+				minFinalityThreshold: TREASURY_FUND_MIN_FINALITY_THRESHOLD,
+				mintRecipient: routerBytes32,
+				recipient: {
+					eercPublicKey: [pubKeyX.toString(), pubKeyY.toString()],
+					treasuryAddress,
+				},
+				sourceChain: source.source.chain,
+				sourceChainId: source.source.chainId,
+				sourceDomain: source.source.domain,
+				token: body.data.token,
+				tokenMessenger: source.source.tokenMessenger,
+			};
+
+			// Preview: no burn tx yet, so there is nothing for the relayer to track —
+			// just return the params the funding wallet signs.
+			if (!body.data.sourceTxHash) {
+				return reply.send({ burn });
+			}
+
+			// Register the signed burn as a pending CCTP transfer bound to this org.
+			const { intent, created } = await createIntent(db, {
+				amount: body.data.amount,
+				destToken: body.data.token,
+				orgId,
+				sourceChainId: source.source.chainId,
+				sourceDomain: source.source.domain,
+				sourceTxHash: body.data.sourceTxHash,
+				userAddress: treasuryAddress,
+				userId: request.user!.id,
+				userPubKeyX: pubKeyX.toString(),
+				userPubKeyY: pubKeyY.toString(),
+			});
+
+			// A burn tx maps to at most one transfer (unique sourceTxHash). If an
+			// existing transfer belongs to a different org (or is a user onramp),
+			// reject rather than leak/rebind it; a same-org resubmit is idempotent.
+			if (!created && intent.orgId !== orgId) {
+				return reply.code(409).send({ error: "source_tx_hash_conflict" });
+			}
+
+			return reply
+				.code(created ? 201 : 200)
+				.send({ burn, fundIntent: serializeIntent(intent) });
+		},
+	);
+
+	// GET /orgs/:id/treasury/deposits — unified funding history (#114): direct
+	// deposits (treasury_deposits, source='direct') merged with cross-chain CCTP
+	// transfers, which carry the richer pending->credited lifecycle and the source
+	// chain. A credited CCTP transfer also mirrors into treasury_deposits
+	// (source='cctp'); the view reads CCTP entries from the transfers so the source
+	// chain and live status surface (and to avoid double-counting).
+	fastify.get(
+		"/orgs/:id/treasury/deposits",
+		{ preHandler: requireOrgRole("viewer") },
+		async (request, reply) => {
+			const orgId = (request.params as { id: string }).id;
+
+			const query = depositsQuerySchema.safeParse(request.query);
+			if (!query.success) {
+				return reply.code(400).send({ error: "invalid_deposits_query" });
+			}
+			const { before, limit } = query.data;
+			const beforeCursor = before ? new Date(before) : null;
+
+			// Bound both source queries: fetch one past the page size (newest first)
+			// so the merge below can both fill a full page and detect whether another
+			// page exists, while peak memory stays O(limit) regardless of org size.
+			const directRows = await db
+				.select()
+				.from(treasuryDeposits)
+				.where(
+					and(
+						eq(treasuryDeposits.orgId, orgId),
+						eq(treasuryDeposits.source, "direct"),
+						beforeCursor
+							? lt(treasuryDeposits.createdAt, beforeCursor)
+							: undefined,
+					),
+				)
+				.orderBy(desc(treasuryDeposits.createdAt))
+				.limit(limit + 1);
+			const cctpRows = await db
+				.select()
+				.from(onrampIntents)
+				.where(
+					and(
+						eq(onrampIntents.orgId, orgId),
+						beforeCursor
+							? lt(onrampIntents.createdAt, beforeCursor)
+							: undefined,
+					),
+				)
+				.orderBy(desc(onrampIntents.createdAt))
+				.limit(limit + 1);
+
+			const merged = [
+				...directRows.map((row) => ({
+					amount: row.amount,
+					createdAt: row.createdAt.toISOString(),
+					id: row.id,
+					kind: "direct" as const,
+					sourceChain: null,
+					sourceDomain: null,
+					status: directDepositStatus(row.status),
+					token: row.token,
+					txHash: row.txHash,
+					updatedAt: row.updatedAt.toISOString(),
+				})),
+				...cctpRows.map((row) => ({
+					amount: row.amount,
+					createdAt: row.createdAt.toISOString(),
+					id: row.id,
+					kind: "cctp" as const,
+					sourceChain:
+						resolveSourceDomain(options.config.tier, row.sourceDomain)?.chain ??
+						null,
+					sourceDomain: row.sourceDomain,
+					status: cctpDepositStatus(row.status),
+					token: row.destToken,
+					txHash: row.settleTxHash,
+					updatedAt: row.updatedAt.toISOString(),
+				})),
+			].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+
+			// Each source is capped at limit+1, so the merged top `limit` is the true
+			// global newest page; a leftover row means there's a next page to fetch.
+			const deposits = merged.slice(0, limit);
+			const nextCursor =
+				merged.length > limit
+					? (deposits[deposits.length - 1]?.createdAt ?? null)
+					: null;
+
+			return reply.send({ deposits, nextCursor });
+		},
+	);
+};
+
+type UnifiedDepositStatus = "pending" | "credited" | "failed";
+
+function directDepositStatus(
+	status: TreasuryDepositStatus,
+): UnifiedDepositStatus {
+	if (status === "confirmed") {
+		return "credited";
+	}
+	if (status === "failed") {
+		return "failed";
+	}
+	return "pending";
+}
+
+function cctpDepositStatus(status: OnrampStatus): UnifiedDepositStatus {
+	if (status === "credited") {
+		return "credited";
+	}
+	if (status === "failed") {
+		return "failed";
+	}
+	return "pending";
+}
+
+type OrgMemberAllowlistRecord = {
+	address: string;
+	allowlist: {
+		status: OrgMemberAllowlistStatus;
+		txHash: string | null;
+		updatedAt: Date;
+	} | null;
+	kyc: {
+		approved: boolean;
+		approvedAt: string | null;
+		onboardingStatus: OnboardingStatus | null;
+		provider: string | null;
+		status: string;
+	};
+	orgId: string;
+	userId: string;
+};
+
+async function loadOrgMemberAllowlist(
+	db: Database,
+	orgId: string,
+	address: string,
+): Promise<OrgMemberAllowlistRecord | null> {
+	const [row] = await db
+		.select({
+			address: users.address,
+			allowlistStatus: orgMemberAllowlist.status,
+			allowlistTxHash: orgMemberAllowlist.txHash,
+			allowlistUpdatedAt: orgMemberAllowlist.updatedAt,
+			kycApprovedAt: kycRecords.approvedAt,
+			kycProvider: kycRecords.provider,
+			onboardingKycApprovedAt: onboardings.kycApprovedAt,
+			onboardingStatus: onboardings.status,
+			userId: orgMembers.userId,
+		})
+		.from(orgMembers)
+		.innerJoin(users, eq(users.id, orgMembers.userId))
+		.leftJoin(kycRecords, eq(kycRecords.userId, orgMembers.userId))
+		.leftJoin(onboardings, eq(onboardings.userId, orgMembers.userId))
+		.leftJoin(
+			orgMemberAllowlist,
+			and(
+				eq(orgMemberAllowlist.orgId, orgMembers.orgId),
+				eq(orgMemberAllowlist.userId, orgMembers.userId),
+			),
+		)
+		.where(and(eq(orgMembers.orgId, orgId), eq(users.address, address)))
+		.limit(1);
+
+	if (!row) {
+		return null;
+	}
+
+	const kycRecordApproved = row.kycApprovedAt !== null;
+	const onboardingApproved =
+		row.onboardingStatus !== null &&
+		approvedKycOnboardingStatuses.has(row.onboardingStatus);
+	const approved = kycRecordApproved || onboardingApproved;
+	const approvedAt = row.kycApprovedAt ?? row.onboardingKycApprovedAt;
+
+	return {
+		address: row.address,
+		allowlist:
+			row.allowlistStatus === null
+				? null
+				: {
+						status: row.allowlistStatus,
+						txHash: row.allowlistTxHash,
+						updatedAt: row.allowlistUpdatedAt!,
+					},
+		kyc: {
+			approved,
+			approvedAt: approvedAt?.toISOString() ?? null,
+			onboardingStatus: row.onboardingStatus,
+			provider: row.kycProvider,
+			status: approved ? "approved" : (row.onboardingStatus ?? "not_started"),
+		},
+		orgId,
+		userId: row.userId,
+	};
+}
+
+// Persist a `pending` allowlist row before the irreversible on-chain
+// applyAllowlist call. Mirrors the treasury-deposit sign-first pattern: the row
+// is finalized to enabled/revoked (with tx hash) and audit-logged by
+// recordMemberAllowlistChange once the on-chain call returns. If that finalizing
+// write never runs (crash, transient DB error), a recoverable `pending` row is
+// left behind rather than nothing — and a failed revoke never strands the row
+// asserting the now-false `enabled` state. The tx hash is cleared here because
+// any previously recorded hash belongs to a prior, now-superseded change.
+async function recordMemberAllowlistIntent(
+	db: Database,
+	member: OrgMemberAllowlistRecord,
+): Promise<void> {
+	const now = new Date();
+	await db
+		.insert(orgMemberAllowlist)
+		.values({
+			orgId: member.orgId,
+			status: "pending",
+			txHash: null,
+			updatedAt: now,
+			userId: member.userId,
+		})
+		.onConflictDoUpdate({
+			set: {
+				status: "pending",
+				txHash: null,
+				updatedAt: now,
+			},
+			target: [orgMemberAllowlist.orgId, orgMemberAllowlist.userId],
+		});
+}
+
+async function recordMemberAllowlistChange({
+	action,
+	actor,
+	chainEnv,
+	chainId,
+	db,
+	member,
+	result,
+}: {
+	action: "enable" | "revoke";
+	actor: string;
+	chainEnv: string;
+	chainId: number;
+	db: Database;
+	member: OrgMemberAllowlistRecord;
+	result: AllowlistActionResult;
+}): Promise<void> {
+	const now = new Date();
+	const status: OrgMemberAllowlistStatus =
+		action === "enable" ? "enabled" : "revoked";
+	const txHash = normalizeTxHash(result.txHash);
+
+	await db.transaction(async (tx) => {
+		await tx
+			.insert(orgMemberAllowlist)
+			.values({
+				orgId: member.orgId,
+				status,
+				txHash,
+				updatedAt: now,
+				userId: member.userId,
+			})
+			.onConflictDoUpdate({
+				set: {
+					status,
+					// Preserve a previously-recorded tx hash on a re-toggle or a Fuji
+					// no-op (where result.txHash is null) rather than nulling it out.
+					txHash: txHash ?? sql`${orgMemberAllowlist.txHash}`,
+					updatedAt: now,
+				},
+				target: [orgMemberAllowlist.orgId, orgMemberAllowlist.userId],
+			});
+
+		await tx.insert(auditLog).values({
+			action: `org_member_allowlist_${action}`,
+			actor,
+			meta: {
+				address: getAddress(member.address),
+				chainEnv,
+				chainId,
+				kyc: member.kyc,
+				orgId: member.orgId,
+				result,
+				status,
+				userId: member.userId,
+			},
+			subject: orgMemberAllowlistSubject(member.orgId, member.userId),
+		});
+	});
+}
+
+function serializeMemberAllowlist(
+	member: OrgMemberAllowlistRecord,
+	chain: AllowlistStatus,
+	result?: AllowlistActionResult,
+) {
+	return {
+		address: getAddress(member.address),
+		chain,
+		kyc: member.kyc,
+		orgId: member.orgId,
+		result,
+		status: member.allowlist?.status ?? "not_requested",
+		txHash: member.allowlist?.txHash ?? null,
+		updatedAt: member.allowlist?.updatedAt.toISOString() ?? null,
+		userId: member.userId,
+	};
+}
+
+function withAllowlistChange(
+	member: OrgMemberAllowlistRecord,
+	status: OrgMemberAllowlistStatus,
+	result: AllowlistActionResult,
+): OrgMemberAllowlistRecord {
+	return {
+		...member,
+		allowlist: {
+			status,
+			txHash: normalizeTxHash(result.txHash),
+			updatedAt: new Date(),
+		},
+	};
+}
+
+function allowlistResultToStatus(result: AllowlistActionResult): AllowlistStatus {
+	return {
+		address: result.address,
+		enabled: result.enabled,
+		level:
+			result.result === "enabled"
+				? "1"
+				: result.result === "revoked"
+					? "0"
+					: result.previousLevel,
+	};
+}
+
+function normalizeMemberAddress(address: string): string | null {
+	if (!isAddress(address, { strict: false })) {
+		return null;
+	}
+
+	return getAddress(address).toLowerCase();
+}
+
+function normalizeTxHash(txHash: string | null): string | null {
+	return txHash?.toLowerCase() ?? null;
+}
+
+function orgMemberAllowlistSubject(orgId: string, userId: string): string {
+	return `org:${orgId}:member:${userId}:allowlist`;
+}
+
+function resolveFundingToken(
+	config: ApiConfig,
+	token: "usdc" | "eurc",
+): TreasuryFundingToken | null {
+	return (
+		config.treasuryFundingTokens.find(
+			(entry) => entry.token === token,
+		) ?? null
+	);
+}
+
+async function loadTreasuryBalances({
+	config,
+	eercKey,
+	submitter,
+	treasuryAddress,
+}: {
+	config: ApiConfig;
+	eercKey: Buffer;
+	submitter: PayrollSubmitter;
+	treasuryAddress: string;
+}) {
+	const account = deserializeManagedEercAccount(
+		unsealString(config.appMasterKey, eercKey),
+	);
+
+	return Promise.all(
+		config.treasuryFundingTokens.map(async (token) => {
+			const balance = await submitter.loadTreasuryBalance({
+				tokenId: token.tokenId,
+				treasuryAddress,
+			});
+
+			return {
+				amount: getDecryptedBalance(account.privateKey, balance).toString(),
+				decimals: token.decimals,
+				symbol: token.symbol,
+				token: token.token,
+				tokenId: token.tokenId.toString(),
+			};
+		}),
+	);
+}
+
+async function loadOrCreateTreasuryEercAccount(
+	db: Database,
+	config: ApiConfig,
+	treasuryId: string,
+	sealedEercKey: Buffer | null,
+): Promise<ManagedEercAccount> {
+	if (sealedEercKey) {
+		return deserializeManagedEercAccount(
+			unsealString(config.appMasterKey, sealedEercKey),
+		);
+	}
+
+	const account = createManagedEercAccount();
+	const sealed = sealString(
+		config.appMasterKey,
+		serializeManagedEercAccount(account),
+	);
+	const [updated] = await db
+		.update(orgTreasuries)
+		.set({ sealedEercKey: sealed })
+		.where(
+			and(
+				eq(orgTreasuries.id, treasuryId),
+				isNull(orgTreasuries.sealedEercKey),
+			),
+		)
+		.returning({ sealedEercKey: orgTreasuries.sealedEercKey });
+
+	if (updated?.sealedEercKey) {
+		return account;
+	}
+
+	const [existing] = await db
+		.select({ sealedEercKey: orgTreasuries.sealedEercKey })
+		.from(orgTreasuries)
+		.where(eq(orgTreasuries.id, treasuryId))
+		.limit(1);
+	if (!existing?.sealedEercKey) {
+		throw new Error("treasury_eerc_key_not_persisted");
+	}
+
+	return deserializeManagedEercAccount(
+		unsealString(config.appMasterKey, existing.sealedEercKey),
+	);
+}
