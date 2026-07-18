@@ -1,0 +1,88 @@
+# BenzoNet Blockscout — overrides on top of the upstream blockscout/docker-compose.
+# Usage: clone blockscout, drop this file into blockscout/docker-compose/, then
+#   docker compose up -d          (see README for the full runbook)
+#
+# What it does: pins the backend to a pre-built image (no source build), points
+# every JSON-RPC URL at the native BenzoNet node (via the socat bridge on the
+# docker host-gateway), enables Postgres SSL (the latest backend requires it),
+# disables optional/heavy indexers, brands the frontend as BenzoNet/BGAS, and
+# binds the proxy to localhost so Caddy owns 80/443.
+
+services:
+  backend:
+    build: !reset null
+    image: ghcr.io/blockscout/blockscout:latest
+    environment:
+      ECTO_SSL_MODE: require
+      DATABASE_URL: postgresql://blockscout:ceWb1MeLBEeOIfk65gU8EjF8@db:5432/blockscout
+      ETHEREUM_JSONRPC_VARIANT: geth
+      ETHEREUM_JSONRPC_HTTP_URL: http://host.docker.internal:19650/ext/bc/${BENZONET_BLOCKCHAIN_ID}/rpc
+      ETHEREUM_JSONRPC_TRACE_URL: http://host.docker.internal:19650/ext/bc/${BENZONET_BLOCKCHAIN_ID}/rpc
+      ETHEREUM_JSONRPC_ETH_CALL_URL: http://host.docker.internal:19650/ext/bc/${BENZONET_BLOCKCHAIN_ID}/rpc
+      ETHEREUM_JSONRPC_DISABLE_ARCHIVE_BALANCES: 'true'   # node is pruned
+      CHAIN_ID: '68420'
+      COIN: BGAS
+      COIN_NAME: BGAS
+      SUBNETWORK: BenzoNet
+      NETWORK: BenzoNet
+      NFT_MEDIA_HANDLER_ENABLED: 'false'
+      INDEXER_DISABLE_INTERNAL_TRANSACTIONS_FETCHER: 'true'
+      INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: 'true'
+      MICROSERVICE_SC_VERIFIER_ENABLED: 'false'
+
+  # The latest backend negotiates TLS to Postgres; the bundled postgres:17 has
+  # none, so generate a self-signed cert at start and turn ssl on.
+  db:
+    command: !reset null
+    entrypoint:
+      - sh
+      - -c
+      - |
+        openssl req -new -x509 -days 365 -nodes -text -out /tmp/server.crt -keyout /tmp/server.key -subj /CN=db >/dev/null 2>&1
+        cp /tmp/server.crt /tmp/server.key /var/lib/postgresql/
+        chmod 600 /var/lib/postgresql/server.key
+        chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
+        exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key -c max_connections=200 -c client_connection_check_interval=60000
+
+  frontend:
+    environment:
+      NEXT_PUBLIC_NETWORK_NAME: BenzoNet
+      NEXT_PUBLIC_NETWORK_SHORT_NAME: BenzoNet
+      NEXT_PUBLIC_NETWORK_ID: '68420'
+      NEXT_PUBLIC_NETWORK_CURRENCY_NAME: Benzo Gas
+      NEXT_PUBLIC_NETWORK_CURRENCY_SYMBOL: BGAS
+      NEXT_PUBLIC_NETWORK_CURRENCY_DECIMALS: '18'
+      NEXT_PUBLIC_API_HOST: explorer.benzo.space
+      NEXT_PUBLIC_APP_HOST: explorer.benzo.space
+      NEXT_PUBLIC_API_PROTOCOL: https
+      NEXT_PUBLIC_APP_PROTOCOL: https
+      NEXT_PUBLIC_API_WEBSOCKET_PROTOCOL: wss
+      NEXT_PUBLIC_STATS_API_HOST: https://stats.benzo.space
+      NEXT_PUBLIC_HOMEPAGE_CHARTS: "['daily_txs']"
+      NEXT_PUBLIC_COLOR_THEME_DEFAULT: dark
+      # Benzo brand — marks served by Caddy from caddy/brand/
+      NEXT_PUBLIC_NETWORK_LOGO: https://explorer.benzo.space/brand/benzo-mark-cream.svg
+      NEXT_PUBLIC_NETWORK_LOGO_DARK: https://explorer.benzo.space/brand/benzo-mark-cream.svg
+      NEXT_PUBLIC_NETWORK_ICON: https://explorer.benzo.space/brand/benzo-mark.svg
+      NEXT_PUBLIC_NETWORK_ICON_DARK: https://explorer.benzo.space/brand/benzo-mark-cream.svg
+      NEXT_PUBLIC_HOMEPAGE_PLATE_BACKGROUND: 'radial-gradient(103% 103% at 0% 0%, #7342E2 0%, #161E2D 100%)'
+      NEXT_PUBLIC_HOMEPAGE_PLATE_TEXT_COLOR: '#F4F4EE'
+
+  # Stats reaches the backend directly on the compose network. The upstream
+  # default (http://host.docker.internal:80) hits the Caddy public edge, which
+  # 301s HTTP->HTTPS and then fails TLS for the internal hostname, so the stats
+  # startup waiter never passes -> the stats HTTP server never comes up -> nginx
+  # 502s -> the homepage "Daily transactions" chart shows "Something went wrong".
+  # NOTE: after recreating the stats container, `docker compose restart proxy`
+  # so nginx re-resolves the new stats IP (else it 502s on the stale one).
+  stats:
+    environment:
+      STATS__BLOCKSCOUT_API_URL: http://backend:4000
+      # user-ops indexer is disabled here, so don't gate charts on it
+      STATS__CONDITIONAL_START__USER_OPS_PAST_INDEXING_FINISHED__ENABLED: 'false'
+
+  # Caddy owns 80/443, so bind Blockscout's nginx to localhost only.
+  proxy:
+    ports: !override
+      - '127.0.0.1:8090:80'      # frontend + /api
+      - '127.0.0.1:8091:8080'    # stats API

@@ -1,0 +1,30 @@
+# BenzoNet edge — the single public entry, host-networked so it reaches the
+# native node (127.0.0.1:9650) and the Blockscout proxy (127.0.0.1:8090/8091).
+# Auto-TLS via Let's Encrypt. BENZONET_BLOCKCHAIN_ID is substituted at deploy.
+{
+	email ops@benzo.space
+}
+
+# Branded block explorer (Blockscout). /brand/* is served as static brand assets.
+explorer.benzo.space {
+	handle_path /brand/* {
+		root * /srv/brand
+		file_server
+	}
+	reverse_proxy 127.0.0.1:8090
+}
+
+# Stats microservice (charts).
+stats.benzo.space {
+	reverse_proxy 127.0.0.1:8091
+}
+
+# Public JSON-RPC edge — POST only, rewritten to the BenzoNet chain path.
+rpc.benzo.space {
+	@rpc method POST OPTIONS
+	handle @rpc {
+		rewrite * /ext/bc/{$BENZONET_BLOCKCHAIN_ID}/rpc
+		reverse_proxy 127.0.0.1:9650
+	}
+	respond 404
+}

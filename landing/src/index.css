@@ -1,0 +1,1779 @@
+@import "tailwindcss";
+
+/* ————————————————————————————————————————
+   Benzo brand tokens (from stellar-benzo/.impeccable.md)
+   discreet · warm · dependable — privacy is calm, not loud
+———————————————————————————————————————— */
+:root {
+  --paper: oklch(0.955 0.006 106); /* warm cream #F2F2EE */
+  --ink: oklch(0.29 0.028 252);
+  --violet: oklch(0.553 0.207 292); /* #7342E2 */
+  --violet-deep: oklch(0.46 0.19 292);
+  --cream: oklch(0.965 0.007 106);
+  --panel: oklch(0.235 0.032 262); /* the vault — deep ink, never pure black */
+  --panel-soft: oklch(0.86 0.02 280);
+  --green: oklch(0.66 0.13 159);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scrollbar-width: thin;
+}
+
+body {
+  margin: 0;
+  font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.display {
+  font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  font-synthesis: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.tnum {
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Root scroll spacer — all visible layers are fixed; this defines scroll length */
+#scroll-spacer {
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  background: var(--paper);
+}
+
+@media (pointer: fine) and (min-width: 1024px) {
+  #scroll-spacer,
+  #scroll-spacer a {
+    cursor: none;
+  }
+}
+
+/* ————— overlaid chrome (exclusion keeps it legible over sky + vault) ————— */
+.xchrome {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  mix-blend-mode: exclusion;
+  color: #fff;
+}
+
+.xchrome a {
+  color: inherit;
+  text-decoration: none;
+  pointer-events: auto;
+}
+
+.eyebrow {
+  font-size: 11.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* brand mark */
+.brand {
+  top: 28px;
+  left: 32px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.brand svg {
+  width: 44px;
+  height: 44px;
+  display: block;
+}
+.brand .word {
+  font-size: 56px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+@media (max-width: 1023px) {
+  .brand {
+    top: 20px;
+    left: 20px;
+    gap: 10px;
+  }
+  .brand svg {
+    width: 30px;
+    height: 30px;
+  }
+  .brand .word {
+    font-size: 36px;
+  }
+}
+@media (max-width: 639px) {
+  .brand {
+    top: 16px;
+    left: 16px;
+  }
+  .brand svg {
+    width: 24px;
+    height: 24px;
+  }
+  .brand .word {
+    font-size: 28px;
+  }
+}
+
+/* hero block: title, subtitle, doors — one composed unit, plain ink over the
+   sky (it fades out before the vault ever reaches it, so no blend needed) */
+.headline {
+  position: fixed;
+  z-index: 20;
+  left: 32px;
+  top: clamp(140px, 20vh, 220px);
+  width: min(720px, 54vw);
+  color: var(--ink);
+  pointer-events: none;
+}
+.headline .title-box {
+  font-size: clamp(44px, 5.2vw, 92px);
+}
+.headline .line {
+  display: block;
+  font-size: inherit;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+}
+.headline .sub {
+  margin: 18px 0 0;
+  max-width: 42ch;
+  font-size: 17px;
+  line-height: 1.55;
+  font-weight: 600;
+  opacity: 0.88;
+}
+@media (max-width: 1023px) {
+  .headline {
+    left: 20px;
+    top: clamp(120px, 16vh, 170px);
+    width: min(620px, calc(100vw - 40px));
+  }
+  .headline .title-box {
+    font-size: clamp(38px, 7vw, 64px);
+  }
+  .headline .sub {
+    font-size: 15px;
+  }
+}
+@media (max-width: 639px) {
+  .headline {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    top: clamp(90px, 12vh, 128px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .headline .title-box {
+    font-size: clamp(34px, 10vw, 46px);
+  }
+  .headline .sub {
+    font-size: 13.5px;
+    max-width: 38ch;
+  }
+}
+
+/* header nav */
+.nav {
+  top: 32px;
+  right: 32px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+/* non-blended brand: true ink, matching the headline */
+.brand-solid {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  color: var(--ink);
+}
+/* non-blended variant: the avalanche cutout video must keep true color */
+.nav-solid {
+  position: fixed;
+  z-index: 20;
+  height: 44px;
+  pointer-events: none;
+  color: var(--ink);
+}
+.nav-solid a {
+  pointer-events: auto;
+  text-decoration: none;
+}
+/* the A cutout: avalanche's alpha loops playing through the logo shape;
+   hovering slides the full credit out from behind it */
+.avax-mark {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.avax-mark__label {
+  white-space: nowrap;
+  padding-right: 16px;
+  overflow: hidden;
+  font-size: 11.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: #e84142;
+}
+/* the credit lives inside the logo: hover swallows it, unhover lets it
+   fly back out of the A */
+.avax-mark__label .l-rest {
+  display: block;
+  transition:
+    opacity 0.3s ease,
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.avax-mark:hover .l-rest,
+.avax-mark:focus-visible .l-rest {
+  opacity: 0;
+  transform: translateX(46px);
+}
+/* on hover the A doubles, pinned at its top-right corner so it expands
+   down the diagonal into open sky */
+.avax-mark:hover .avax-mark__cut,
+.avax-mark:focus-visible .avax-mark__cut {
+  transform: scale(2);
+}
+/* the explorer prompt emerges FROM the triangle's bottom-left corner: a
+   slope-aligned clipping window starts at the corner, and the text slides
+   within it — nothing ever shows below/before the corner */
+.l-clip {
+  position: absolute;
+  width: 136px;
+  height: 36px;
+  right: 5px;
+  top: 100px;
+  overflow: hidden;
+  transform-origin: 0 100%;
+  transform: rotate(-62deg) translateY(-22px);
+  pointer-events: none;
+}
+.l-hover {
+  display: block;
+  white-space: nowrap;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  line-height: 36px;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: #e84142;
+  transform: translateX(-112%);
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.avax-mark:hover .l-hover,
+.avax-mark:focus-visible .l-hover {
+  transform: translateX(8px);
+}
+.avax-mark__cut {
+  display: block;
+  width: 64px;
+  height: 57px;
+  transform-origin: 100% 0%;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  background: #e84142;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 639 564'%3E%3Cpath d='M399.885 563.465H613.609C632.467 563.465 644.269 543.041 634.827 526.718L527.966 341.641C518.524 325.318 494.97 325.318 485.529 341.641L378.667 526.718C369.226 543.041 381.027 563.465 399.885 563.465Z'/%3E%3Cpath d='M426.609 166.12L338.779 13.9644C329.909 -1.41521 307.697 -1.41521 298.827 13.9644L3.43383 525.589C-6.28089 542.435 5.86872 563.454 25.2982 563.454H201.182C219.94 563.454 237.258 553.441 246.625 537.217L426.609 225.477C437.218 207.116 437.218 184.481 426.609 166.12Z'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 639 564'%3E%3Cpath d='M399.885 563.465H613.609C632.467 563.465 644.269 543.041 634.827 526.718L527.966 341.641C518.524 325.318 494.97 325.318 485.529 341.641L378.667 526.718C369.226 543.041 381.027 563.465 399.885 563.465Z'/%3E%3Cpath d='M426.609 166.12L338.779 13.9644C329.909 -1.41521 307.697 -1.41521 298.827 13.9644L3.43383 525.589C-6.28089 542.435 5.86872 563.454 25.2982 563.454H201.182C219.94 563.454 237.258 553.441 246.625 537.217L426.609 225.477C437.218 207.116 437.218 184.481 426.609 166.12Z'/%3E%3C/svg%3E");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+.avax-mark__cut video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.nav .links {
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+.nav a,
+.nav span {
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-weight: 600;
+  /* widen the touch target without shifting layout */
+  padding: 10px 6px;
+  margin: -10px -6px;
+}
+@media (max-width: 639px) {
+  .nav {
+    top: 16px;
+    right: 16px;
+    gap: 20px;
+  }
+  .nav .links {
+    gap: 20px;
+  }
+  .nav a,
+  .nav span {
+    font-size: 13px;
+  }
+}
+
+/* private balance: the proof object, sharing the hover panel's column —
+   both rails start at 66vw so panel text and balance left-align */
+.balance {
+  left: 66vw;
+  right: auto;
+  bottom: 160px;
+  width: 330px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.balance .amount {
+  pointer-events: auto;
+  cursor: none;
+  min-width: 330px;
+}
+.balance .head {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 26px;
+}
+.balance .glyphcircle {
+  position: relative;
+  width: 30px;
+  height: 30px;
+}
+.balance .glyphcircle span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.balance .label {
+  width: 100%;
+  font-size: 30px;
+  line-height: 1;
+  text-align: left;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+.balance .amount {
+  font-size: 80px;
+  line-height: 1;
+  text-align: left;
+  letter-spacing: 0.02em;
+  margin-top: 14px;
+}
+@media (max-width: 1023px) {
+  .balance {
+    left: 0;
+    right: 0;
+    bottom: 56px;
+    width: auto;
+    align-items: center;
+  }
+  .balance .label,
+  .balance .amount {
+    text-align: center;
+  }
+  .balance .head {
+    width: 252px;
+    margin: 0 auto 12px;
+    gap: 8px;
+  }
+  .balance .glyphcircle {
+    width: 20px;
+    height: 20px;
+  }
+  .balance .glyphcircle span {
+    font-size: 9px;
+  }
+  .balance .label {
+    font-size: 20px;
+  }
+  .balance .amount {
+    font-size: 60px;
+  }
+}
+@media (max-width: 639px) {
+  /* mobile: the balance sits between the hero copy and the wallet door */
+  .balance {
+    bottom: auto;
+    top: min(48vh, 420px);
+  }
+  .balance .head {
+    display: none;
+  }
+  .balance .label {
+    font-size: 18px;
+  }
+  .balance .amount {
+    font-size: 52px;
+    margin-top: 10px;
+  }
+}
+
+/* ————— the vault panel ————— */
+.vault {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: var(--panel);
+  transform: translateY(100vh);
+  will-change: transform;
+}
+/* pixel apron: the vault's leading edge dissolves the sky into dithered
+   ink cells — same low-res cipher language as the sky filter. The canvas
+   is drawn at grid resolution and upscaled crisp; the ticker moves it
+   with the panel and fades it in with scroll. */
+.vault-apron {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: -54vh;
+  height: 54vh;
+  z-index: 9;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.vault-apron canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+.vault-wrap {
+  position: relative;
+  width: 100%;
+  padding-top: 4vh;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+
+/* ————— full-screen scenes (apple-keynote scroll presentation) ————— */
+.scene {
+  position: relative;
+}
+.scene-pin {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.scene-send {
+  /* 100vh pin + 440vh of scrub: twice the travel it had at 320vh, so the
+     send plays out at half the per-scroll speed on desktop */
+  height: 540vh;
+}
+/* phones give the send film three screens' worth of scrub room */
+@media (max-width: 639px) and (prefers-reduced-motion: no-preference) {
+  .scene-send {
+    height: 520vh;
+  }
+}
+.scene-statement {
+  height: 170vh;
+}
+.scene-stage {
+  height: 175vh;
+}
+.statement {
+  margin: 0;
+  padding: 0 20px;
+  text-align: center;
+  color: var(--cream);
+  font-size: clamp(44px, 7.5vw, 128px);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+.vault-intro {
+  text-align: center;
+  color: var(--panel-soft);
+  margin: 0 auto 72px;
+  padding: 0 24px;
+}
+.vault-intro .rule {
+  display: inline-block;
+  width: 42px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.4;
+  vertical-align: middle;
+  margin: 0 18px 3px;
+}
+.vault-intro .line {
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.vault-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: clamp(14px, 1.8vw, 26px);
+  padding: 8vh clamp(16px, 3vw, 48px) 4vh;
+}
+@media (max-width: 1023px) {
+  .vault-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 639px) {
+  .vault-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.vault-cell {
+  aspect-ratio: 2 / 3;
+  position: relative;
+}
+.bp-card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform: scale(0);
+  will-change: transform;
+  overflow: hidden;
+  border-radius: 10px;
+}
+.bp-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* captions live beside the card, on its empty side, and fade with its scale */
+.cell-tag {
+  position: absolute;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--panel-soft);
+  white-space: nowrap;
+  opacity: 0;
+  will-change: opacity;
+  pointer-events: none;
+}
+.cell-tag .tag-num {
+  font-size: 10px;
+  opacity: 0.55;
+}
+.cell-tag.side-right {
+  left: calc(100% + 22px);
+}
+/* left-side captions align to the card top so two captions sharing the same
+   empty column never sit on one line */
+.cell-tag.side-left {
+  right: calc(100% + 22px);
+  bottom: auto;
+  top: 8px;
+}
+@media (max-width: 639px) {
+  .vault-grid {
+    row-gap: 40px;
+  }
+  .cell-tag {
+    font-size: 11px;
+    bottom: auto;
+    top: calc(100% + 10px);
+  }
+  .cell-tag.side-right,
+  .cell-tag.side-left {
+    left: 2px;
+    right: auto;
+  }
+}
+
+/* ————— the three stages, each on its own full-screen scene ————— */
+.stage-step {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 24px;
+  color: var(--cream);
+}
+.stage-eyebrow {
+  margin-bottom: 46px;
+}
+/* giant ghost numeral drifting on scroll behind the verb */
+.stage-step .ghost {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, calc(-50% + (0.5 - var(--sp, 0.5)) * 12vh));
+  height: clamp(240px, 34vw, 520px);
+  width: auto;
+  pointer-events: none;
+  user-select: none;
+}
+.stage-step .ghost path {
+  fill: none;
+  stroke: oklch(0.86 0.02 280 / 0.14);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+/* letter-spacing eases shut as the scene's scrub advances */
+.stage-verb {
+  position: relative;
+  margin: 0 0 24px;
+  font-size: clamp(46px, 8.2vw, 136px);
+  line-height: 1.02;
+  text-transform: uppercase;
+  letter-spacing: calc(0.06em - clamp(0, calc(var(--sp, 1) * 2.2), 1) * 0.09em);
+}
+.stage-sub {
+  position: relative;
+  margin: 0;
+  max-width: 52ch;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--panel-soft);
+}
+@media (max-width: 639px) {
+  .stage-verb {
+    font-size: clamp(34px, 11vw, 52px);
+  }
+  .stage-sub {
+    font-size: 13.5px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage-step .ghost {
+    transform: translate(-50%, -50%);
+  }
+  .stage-verb {
+    letter-spacing: -0.03em;
+  }
+}
+
+/* phones: the three stages fold into one screen */
+.scene-stepstack {
+  height: 135vh;
+}
+.steps-stack {
+  width: 100%;
+  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 34px;
+  color: var(--cream);
+}
+.stack-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+.stack-num {
+  font-size: 11px;
+  letter-spacing: 0.34em;
+  font-weight: 700;
+  color: oklch(0.68 0.15 292);
+}
+.stack-verb {
+  margin: 0;
+  font-size: clamp(28px, 8.4vw, 38px);
+  line-height: 1.02;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+.stack-sub {
+  margin: 0;
+  max-width: 42ch;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--panel-soft);
+}
+
+/* ————— the private send demo (sent over Avalanche) ————— */
+/* the send demo fills its scene's stage */
+.psend-inner {
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 clamp(20px, 4vw, 48px);
+  color: var(--cream);
+}
+.psend-eyebrow {
+  margin-bottom: 34px;
+}
+.psend-title {
+  margin: 0 0 54px;
+  text-align: center;
+  font-size: clamp(32px, 4.4vw, 62px);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+}
+.psend-stage {
+  display: grid;
+  grid-template-columns: 1fr minmax(280px, 1.5fr) 1fr;
+  gap: clamp(18px, 3vw, 44px);
+  align-items: center;
+}
+.pcard {
+  position: relative;
+  background: var(--cream);
+  color: var(--ink);
+  border-radius: 18px;
+  padding: 24px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 158px;
+  /* both cards fill the grid row, so sender and receiver are always the
+     exact same size even though the receiver reserves its reveal rows */
+  align-self: stretch;
+  box-shadow: 0 24px 60px oklch(0.1 0.02 262 / 0.4);
+}
+.pcard .pname {
+  font-size: 11.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+  opacity: 0.6;
+}
+.pcard .pbal {
+  font-size: clamp(28px, 2.9vw, 42px);
+  line-height: 1.1;
+}
+.pcard .paddr {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  opacity: 0.5;
+}
+.psending {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+}
+.psending b {
+  color: var(--violet);
+}
+.pplus {
+  margin-top: 4px;
+  font-size: 21px;
+  color: var(--violet);
+  opacity: 0;
+}
+.ppriv {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: oklch(0.52 0.11 159);
+  opacity: 0;
+}
+.prail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  /* the caption below skews the group's center; shift so the TRACK centers
+     against the cards, not the track+caption combo */
+  transform: translateY(15px);
+}
+.rail-track {
+  position: relative;
+  width: 100%;
+  height: 62px;
+  border-radius: 999px;
+  overflow: hidden;
+  /* Avalanche red, per the press kit */
+  background: linear-gradient(100deg, #c23234, #e84142 55%, #d63638);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.14),
+    0 18px 48px rgb(232 65 66 / 0.3);
+}
+.rail-track::before {
+  content: "";
+  position: absolute;
+  inset: 0 -72px 0 -72px;
+  background: repeating-linear-gradient(115deg, rgb(255 255 255 / 0.09) 0 14px, transparent 14px 36px);
+  animation: railFlow 1.1s linear infinite;
+}
+@keyframes railFlow {
+  to {
+    transform: translateX(50px);
+  }
+}
+.rail-logo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 30px;
+  width: auto;
+  transform: translate(-50%, -50%);
+  opacity: 0.4;
+}
+/* the coin rides the rail: a canvas square, the renderer does the rest */
+.packet {
+  position: absolute;
+  left: 28px;
+  top: calc(50% - 29px);
+  width: 58px;
+  height: 58px;
+  pointer-events: none;
+}
+.packet .coin {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.rail-caption {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--panel-soft);
+}
+.rail-cipher {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--cream);
+  min-width: 11ch;
+  text-align: left;
+}
+@media (max-width: 639px) {
+  .psend-eyebrow {
+    margin-bottom: 18px;
+  }
+  .psend-title {
+    margin: 0 0 28px;
+  }
+  .psend-stage {
+    grid-template-columns: 1fr;
+    /* stacked rows share one height, so sender and receiver cards match */
+    grid-auto-rows: 1fr;
+    gap: 14px;
+  }
+  .pcard {
+    min-height: 0;
+    padding: 20px 20px 16px;
+  }
+  .prail {
+    gap: 8px;
+    transform: none;
+  }
+  .rail-track {
+    width: 46px;
+    height: 132px;
+    margin: 0 auto;
+    background: linear-gradient(190deg, #c23234, #e84142 55%, #d63638);
+  }
+  .rail-track::before {
+    inset: -72px 0 -72px 0;
+    animation-name: railFlowY;
+  }
+  @keyframes railFlowY {
+    to {
+      transform: translateY(50px);
+    }
+  }
+  .rail-logo {
+    height: 17px;
+  }
+  .packet {
+    width: 40px;
+    height: 40px;
+    left: calc(50% - 20px);
+    top: 28px; /* matches the JS PAD so travel stays symmetric */
+  }
+
+  /* film mode: sender, network, receiver each own the screen, crossfaded
+     by scroll (the JS drives opacity/transform on the three views) */
+  .psend--film .psend-eyebrow {
+    display: none;
+  }
+  .psend--film .psend-stage {
+    display: block;
+    position: relative;
+    height: 58vh;
+  }
+  .psend--film .pcard,
+  .psend--film .prail {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    height: fit-content;
+    opacity: 0;
+  }
+  .psend--film .pcard {
+    width: min(100%, 400px);
+    padding: 30px 26px;
+    border-radius: 22px;
+    gap: 6px;
+  }
+  .psend--film .pcard .pname {
+    font-size: 12.5px;
+  }
+  .psend--film .pcard .pbal {
+    font-size: 46px;
+  }
+  .psend--film .pcard .paddr {
+    font-size: 12.5px;
+  }
+  .psend--film .psending {
+    font-size: 14.5px;
+    margin-top: 10px;
+  }
+  .psend--film .pplus {
+    font-size: 24px;
+    margin-top: 8px;
+  }
+  .psend--film .ppriv {
+    font-size: 13px;
+  }
+  .psend--film .prail {
+    width: fit-content;
+  }
+  .psend--film .rail-track {
+    width: 56px;
+    height: min(300px, 34vh);
+  }
+  .psend--film .rail-logo {
+    height: 22px;
+  }
+  .psend--film .packet {
+    width: 52px;
+    height: 52px;
+    left: calc(50% - 26px);
+  }
+  .psend--film .rail-caption {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-top: 14px;
+    text-align: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail-track::before {
+    animation: none;
+  }
+}
+
+/* wordmark on the left, avalanche badge filling the right of the row */
+.site-footer__brand-row .avax-badge {
+  display: block;
+  flex: none;
+}
+.fcta-arrow {
+  display: inline-block;
+  color: oklch(0.68 0.15 292);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.site-footer__brand-row .avax-badge img {
+  display: block;
+  width: min(540px, 68vw);
+  height: auto;
+  opacity: 0.92;
+  transition: opacity 180ms ease;
+}
+.site-footer__brand-row .avax-badge:hover img {
+  opacity: 1;
+}
+
+/* cursor-following reveals for the step rows */
+.swipeimage {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 145px;
+  height: 193px;
+  object-fit: cover;
+  border-radius: 12px;
+  z-index: 15;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  box-shadow: 0 34px 90px oklch(0.1 0.02 262 / 0.55);
+}
+
+/* ————— the doors: two triangles, one wide rectangle. The card's frame is
+   part of the page skeleton — hover changes emphasis inside it, never its
+   position or size. ————— */
+.doors {
+  position: relative;
+  margin-top: 30px;
+  /* ISO 7810 ID-1: a real credit card's proportions */
+  width: min(400px, 28vw);
+  aspect-ratio: 1.586;
+  pointer-events: auto;
+  perspective: 1100px;
+}
+/* the card: rounded corners live here (clip-paths can't round), and a static
+   perspective tilt + layered shadows give it depth. It still never moves. */
+.doors-card {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  transform: rotateX(9deg) rotateY(-8deg);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.35),
+    0 26px 48px -20px oklch(0.25 0.06 292 / 0.5),
+    0 10px 20px -12px oklch(0.25 0.06 292 / 0.4);
+}
+/* card furniture: both faces are fully dressed cards — chip, contactless,
+   masked PAN, holder line, and the Benzo brand top-right. The business
+   face's kit lives under the personal region at idle, so the seam reveals
+   it as the ink side expands. */
+.doors-card::after {
+  content: "";
+  position: absolute;
+  inset: -8% -30%;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 42%,
+    oklch(1 0 0 / 0.14) 49%,
+    oklch(1 0 0 / 0.04) 56%,
+    transparent 63%
+  );
+  /* --shine is driven by the tilt handler; the band slides like caught light */
+  transform: translateX(calc(var(--shine, 0) * 1%));
+}
+.kit {
+  position: absolute;
+  left: 24px;
+  top: 37%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.kit .chiprow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.kit .chip {
+  width: 42px;
+  height: 31px;
+}
+.kit .waves {
+  width: 21px;
+  height: 21px;
+}
+.kit .pan {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+.kit .meta {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.kit-p .waves {
+  color: oklch(0.35 0.06 292 / 0.6);
+}
+.kit-p .pan {
+  color: oklch(0.35 0.06 292 / 0.66);
+}
+.kit-p .meta {
+  color: oklch(0.35 0.06 292 / 0.48);
+}
+/* the business kit starts lower so the squeezed personal corner never
+   covers its chip */
+.kit-b {
+  top: 52%;
+}
+.kit-b .waves {
+  color: oklch(0.965 0.007 106 / 0.6);
+}
+.kit-b .pan {
+  color: oklch(0.965 0.007 106 / 0.78);
+}
+.kit-b .meta {
+  color: oklch(0.965 0.007 106 / 0.5);
+}
+/* the business face's furniture only exists once that side is open —
+   at rest, fragments of it would peek through the seam */
+.kit-b {
+  opacity: 0;
+}
+@media (pointer: fine) {
+  .doors:has(.tri-b:hover) .kit-b {
+    opacity: 1;
+  }
+}
+/* a quiet invitation under the card; it steps aside once the hover begins */
+.door-hint {
+  position: absolute;
+  top: calc(100% + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: var(--ink);
+  opacity: 0.85;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+@media (pointer: fine) {
+  .doors:hover .door-hint {
+    opacity: 0;
+  }
+}
+@media (max-width: 639px) {
+  .door-hint {
+    display: none;
+  }
+}
+/* phones get one door: a single wallet button instead of the card */
+.door-mobile {
+  display: none;
+}
+.tri {
+  position: absolute;
+  inset: 0;
+  display: block;
+  text-decoration: none;
+  color: var(--ink);
+  transition: clip-path 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: clip-path;
+}
+/* the label pill replaces the pointer entirely over the card */
+@media (pointer: fine) and (min-width: 1024px) {
+  .tri {
+    cursor: none;
+  }
+}
+.tri:focus-visible {
+  outline: 3px solid oklch(0.553 0.207 292 / 0.5);
+  outline-offset: 2px;
+}
+.tri-p {
+  background:
+    radial-gradient(129% 99% at 120% 81%, oklch(0.91 0.045 292) 26%, oklch(0.68 0.165 292) 100%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>");
+  background-blend-mode: color-dodge;
+  clip-path: polygon(0 0, calc(100% - 3px) 0, 0 calc(100% - 3px));
+}
+.tri-b {
+  background: var(--ink);
+  color: var(--cream);
+  clip-path: polygon(100% 3px, 100% 100%, 3px 100%);
+}
+/* hovering a triangle lets it claim more of the square — the seam slides */
+@media (pointer: fine) {
+  .doors:has(.tri-p:hover) .tri-p {
+    clip-path: polygon(0 0, 138% 0, 0 138%);
+    z-index: 2;
+  }
+  .doors:has(.tri-p:hover) .tri-b {
+    clip-path: polygon(100% 42%, 100% 100%, 42% 100%);
+  }
+  .doors:has(.tri-b:hover) .tri-b {
+    clip-path: polygon(100% -38%, 100% 100%, -38% 100%);
+    z-index: 2;
+  }
+  .doors:has(.tri-b:hover) .tri-p {
+    clip-path: polygon(0 0, 58% 0, 0 58%);
+  }
+}
+/* click: the chosen side floods the whole card, swallowing the seam,
+   just before the wave carries the page away (placed after the hover
+   rules so the flood wins the cascade) */
+.tri.filling {
+  z-index: 3;
+  transition: clip-path 0.55s cubic-bezier(0.7, 0, 0.2, 1);
+}
+.tri-p.filling {
+  clip-path: polygon(0 0, 300% 0, 0 300%);
+}
+.tri-b.filling {
+  clip-path: polygon(100% -200%, 100% 100%, -200% 100%);
+}
+.t-label {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: opacity 0.3s ease;
+}
+/* the squeezed door's label bows out instead of showing clipped words */
+@media (pointer: fine) {
+  .doors:has(.tri-p:hover) .tri-b .t-label,
+  .doors:has(.tri-b:hover) .tri-p .t-label,
+  .doors:has(.tri-p:hover) .tri-b .kit,
+  .doors:has(.tri-b:hover) .tri-p .kit {
+    opacity: 0;
+  }
+}
+.tri-p .t-label {
+  top: 16px;
+  left: 18px;
+}
+.tri-b .t-label {
+  bottom: 16px;
+  right: 20px;
+  text-align: right;
+  align-items: flex-end;
+}
+.tri-p .t-label {
+  top: 18px;
+  left: 22px;
+}
+.t-word {
+  font-size: clamp(16px, 1.35vw, 20px);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.t-sub {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  opacity: 0.65;
+}
+
+/* the hover panel owns a reserved slot in the right column — it only ever
+   fades in place, aligned above the balance proof block */
+.door-panel {
+  position: fixed;
+  left: 66vw;
+  top: clamp(190px, 21vh, 250px);
+  width: clamp(380px, 26vw, 520px);
+  min-height: 260px;
+  z-index: 25;
+  color: var(--ink);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.dp-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--violet);
+}
+.dp-title {
+  margin: 0 0 16px;
+  font-size: clamp(26px, 2.4vw, 38px);
+  letter-spacing: -0.02em;
+}
+.dp-clip {
+  overflow: hidden;
+}
+.dp-row {
+  margin: 0 0 9px;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+/* drawn dash, not a character: a short violet line bullets each row */
+.dp-dash {
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  margin: 0 10px 4px 0;
+  vertical-align: middle;
+  background: var(--violet);
+}
+@media (max-width: 1023px) {
+  .door-panel {
+    display: none;
+  }
+}
+@media (max-width: 639px) {
+  .doors {
+    position: fixed;
+    bottom: clamp(56px, 9vh, 96px);
+    left: 24px;
+    right: 24px;
+    width: auto;
+    height: auto;
+    aspect-ratio: auto;
+    margin: 0;
+    perspective: none;
+  }
+  .doors-card {
+    display: none;
+  }
+  .door-mobile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 58px;
+    border-radius: 999px;
+    background: radial-gradient(130% 160% at 18% 0%, oklch(0.91 0.045 292) 12%, oklch(0.68 0.165 292) 100%);
+    color: var(--ink);
+    font-size: 17.5px;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+    box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 0.4),
+      0 16px 36px oklch(0.55 0.2 292 / 0.35);
+  }
+}
+.petal {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 62% 38% 58% 42%;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* leave transition */
+.wave {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 60;
+  display: none;
+  pointer-events: none;
+}
+
+/* ————— site footer: the last slide ————— */
+.site-footer {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  background: var(--panel);
+  color: var(--cream);
+  overflow: hidden;
+  transform: translateY(100vh);
+  will-change: transform;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+}
+.site-footer a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.footer-dots {
+  position: relative;
+  height: clamp(64px, 9vh, 110px);
+  overflow: hidden;
+  flex: none;
+}
+.footer-dots__line {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 200%;
+  height: 70px;
+  opacity: 0.75;
+  transform: translateY(-50%);
+  background-image:
+    radial-gradient(circle, oklch(0.965 0.007 106 / 0.55) 1.5px, transparent 2px),
+    radial-gradient(circle, oklch(0.965 0.007 106 / 0.35) 1px, transparent 1.5px),
+    radial-gradient(circle, oklch(0.965 0.007 106 / 0.45) 1.2px, transparent 1.8px);
+  background-position:
+    0 8px,
+    24px 22px,
+    48px 14px;
+  background-size:
+    72px 38px,
+    110px 44px,
+    160px 52px;
+  animation: footerDotsMove 18s linear infinite;
+}
+@keyframes footerDotsMove {
+  from {
+    transform: translate3d(0, -50%, 0);
+  }
+  to {
+    transform: translate3d(-50%, -50%, 0);
+  }
+}
+
+.site-footer__inner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: min(100% - 96px, 1820px);
+  margin: 0 auto;
+  padding: clamp(10px, 2vh, 30px) 0 clamp(14px, 2vh, 26px);
+}
+
+.site-footer__top {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.25fr) repeat(2, minmax(150px, 0.42fr));
+  gap: clamp(28px, 4vw, 76px);
+}
+.site-footer__top h2 {
+  margin: 0;
+  max-width: 640px;
+  font-size: clamp(28px, 2.9vw, 54px);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  line-height: 1.08;
+}
+.site-footer__nav {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(18px, 2.6vh, 34px);
+  padding-top: 10px;
+}
+.site-footer__nav a {
+  color: oklch(0.965 0.007 106 / 0.88);
+  font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(24px, 2.3vw, 38px);
+  letter-spacing: -0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    color 180ms ease,
+    transform 180ms ease;
+}
+.site-footer__nav a:hover {
+  color: var(--cream);
+  transform: translateX(6px);
+}
+.site-footer__nav a:hover .fcta-arrow {
+  transform: translate(4px, -4px);
+}
+
+.site-footer__brand-row {
+  width: 100%;
+  margin-top: clamp(12px, 2vh, 32px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: clamp(24px, 4vw, 64px);
+}
+.site-footer__brand {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--cream);
+}
+.site-footer__mark {
+  position: relative;
+  flex: 0 0 clamp(54px, 5.6vw, 104px);
+  aspect-ratio: 1;
+  margin-right: clamp(14px, 1.6vw, 28px);
+  border-radius: 50%;
+  background: var(--cream);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.site-footer__mark svg {
+  width: 52%;
+  height: 52%;
+  fill: var(--panel);
+}
+.site-footer__word {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: clamp(64px, 11.5vw, 210px);
+  letter-spacing: -0.045em;
+  line-height: 0.82;
+  white-space: nowrap;
+}
+
+.site-footer__legal {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px 18px;
+  margin-top: clamp(10px, 1.2vh, 20px);
+  color: oklch(0.965 0.007 106 / 0.52);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.site-footer__legal p {
+  margin: 0;
+}
+.site-footer__legal a:hover {
+  color: var(--cream);
+}
+.site-footer__legal .live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.site-footer__legal .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--green);
+}
+
+@media (max-width: 980px) {
+  .site-footer__inner {
+    width: min(100% - 48px, 1820px);
+  }
+  .site-footer__top {
+    grid-template-columns: 1fr 1fr;
+  }
+  .site-footer__top .site-footer__lead {
+    grid-column: 1 / -1;
+  }
+  .site-footer__brand-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 22px;
+  }
+}
+@media (max-width: 560px) {
+  .site-footer__inner {
+    width: min(100% - 32px, 1820px);
+  }
+  .site-footer__top {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .site-footer__nav {
+    padding-top: 0;
+    gap: 16px;
+  }
+  /* the links keep their big-arrow presence on phones — they're the actions,
+     not fine print, and they fill the band above the wordmark */
+  .site-footer__nav a {
+    font-size: 22px;
+  }
+  .site-footer__brand-row {
+    gap: 18px;
+  }
+  .site-footer__brand-row .avax-badge {
+    align-self: stretch;
+  }
+  .site-footer__brand-row .avax-badge img {
+    width: min(340px, 78vw);
+  }
+  .site-footer__mark {
+    flex-basis: clamp(38px, 12vw, 58px);
+  }
+  .site-footer__word {
+    font-size: clamp(45px, 17vw, 84px);
+  }
+}
+
+/* ————— video stage ————— */
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.stage video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.stage .cipher {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+.stage .scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, oklch(0.955 0.006 106 / 0.28) 0%, transparent 32%, oklch(0.955 0.006 106 / 0.18) 100%);
+}
+
+/* ————— custom cursor ————— */
+.cursor {
+  position: fixed;
+  z-index: 50;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+  mix-blend-mode: exclusion;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  display: none;
+}
+.cursor svg {
+  width: 48px;
+  height: 48px;
+  display: block;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cursor.on {
+  opacity: 1;
+}
+.cursor.grow svg {
+  transform: scale(1.35);
+}
+/* the hover still takes over as cursor on the stage scenes */
+.cursor.suppress,
+.cursor.quiet {
+  opacity: 0 !important;
+}
+/* over the door card the cursor IS the click prompt, centered on the pointer */
+.cursor-tag {
+  display: none;
+}
+.cursor.tag {
+  mix-blend-mode: normal;
+}
+.cursor.tag svg,
+.cursor.tag .cursor-dot {
+  display: none;
+}
+.cursor.tag .cursor-tag {
+  display: block;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  font-weight: 700;
+  white-space: nowrap;
+  padding: 10px 16px;
+  border-radius: 999px;
+  box-shadow: 0 12px 28px oklch(0.2 0.05 292 / 0.4);
+}
+/* the pill wears the skin of the door it's over */
+.cursor.tag-p .cursor-tag {
+  background: radial-gradient(130% 160% at 20% 0%, oklch(0.93 0.04 292), oklch(0.74 0.15 292));
+  color: var(--ink);
+}
+.cursor.tag-b .cursor-tag {
+  background: var(--ink);
+  color: var(--cream);
+}
+/* a violet pulse radiating off the pill — "this is the button" */
+.cursor.tag .cursor-tag::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  animation: tagPulse 1.5s ease-out infinite;
+}
+@keyframes tagPulse {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.68 0.15 292 / 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 16px oklch(0.68 0.15 292 / 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cursor.tag .cursor-tag::before {
+    animation: none;
+  }
+}
+@media (pointer: fine) and (min-width: 1024px) {
+  .cursor {
+    display: block;
+  }
+}
+
+/* scroll hint (hero) */
+.hint {
+  left: 50%;
+  bottom: 36px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 600;
+  opacity: 0.85;
+}
+@media (max-width: 1023px) {
+  .hint {
+    font-size: 10px;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-card {
+    will-change: auto;
+  }
+  .pill,
+  .pill .arrow,
+  .cursor svg,
+  .site-footer__nav a {
+    transition: none;
+  }
+  .footer-dots__line {
+    animation: none;
+  }
+}
