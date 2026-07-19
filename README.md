@@ -8,6 +8,12 @@
   and keep a rotatable auditor key for controlled review.
 </p>
 
+<p align="center">
+  <a href="https://benzo.space"><strong>benzo.space</strong></a>
+  &nbsp;&middot;&nbsp; <a href="https://console.benzo.space">Business console</a>
+  &nbsp;&middot;&nbsp; <a href="https://wallet.benzo.space">Consumer wallet</a>
+</p>
+
 
 ## What's Inside This Repo
 
