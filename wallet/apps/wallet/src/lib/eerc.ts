@@ -140,7 +140,7 @@ export async function createEerc(account: BenzoAccount): Promise<EERC | null> {
   if (!ENCRYPTED_ERC_ADDRESS || !REGISTRAR_ADDRESS) return null;
   const EERCClass = await loadEERC();
   const { publicClient, walletClient } = createViemClients(account);
-  return new EERCClass(
+  const eerc = new EERCClass(
     publicClient,
     walletClient,
     ENCRYPTED_ERC_ADDRESS,
@@ -149,6 +149,23 @@ export async function createEerc(account: BenzoAccount): Promise<EERC | null> {
     EERC_CIRCUIT_URLS,
     account.eercDecryptionKey,
   );
+
+  // register() ignores the key passed above: it calls generateDecryptionKey(),
+  // which derives a keypair from a signature over a fixed message, and registers
+  // THAT public key on-chain. Balances are therefore encrypted to the signature
+  // key, while every later instance was decrypting with the seed-derived one.
+  //
+  // The two never matched, so elGamalDecryption returned a point that disagreed
+  // with the amount PCTs: calculateTotalBalance answered -1 and the transfer
+  // circuit rejected the witness in CheckValue. Derive the same key here so an
+  // instance can read and spend what registration created. It is deterministic
+  // and signed by the local key, so there is no prompt and no extra round trip.
+  try {
+    await eerc.generateDecryptionKey();
+  } catch {
+    // Fall back to the constructor key rather than leaving the caller with nothing.
+  }
+  return eerc;
 }
 
 function eercPublicClient(eerc: EERC): PublicClient {
@@ -238,12 +255,14 @@ function balanceFromPcts(
 }
 
 /**
- * The account's private balance, with the discrete-log failure corrected.
+ * The account's private balance for DISPLAY.
  *
- * calculateTotalBalance answers -1 when the eGCT value falls outside the range it
- * searches, which happens at ordinary amounts. Every caller must apply the PCT
- * fallback: the transfer path passes this figure to the SDK, which rejects the send
- * with "Insufficient balance!" the moment it is negative.
+ * calculateTotalBalance answers -1 when it cannot recover the value from the eGCT,
+ * and the PCT fallback then reports what the account actually holds.
+ *
+ * Deliberately not used to build a transfer. The transfer circuit checks the claimed
+ * balance against the eGCT ciphertext (CheckValue), so it only accepts the exact
+ * eGCT plaintext; handing it the PCT figure fails witness generation instead.
  */
 function decryptedBalanceOf(
   eerc: EERC,
@@ -303,24 +322,6 @@ export async function readEercPrivateBalance(account: BenzoAccount): Promise<str
     ];
 
     const total = eerc.calculateTotalBalance(eGCT as never, amountPCTs, balancePCT);
-
-    // calculateTotalBalance recovers the balance from the eGCT by discrete-log
-    // search and answers -1 when the value falls outside the range it searches.
-    // That happens at ordinary amounts: 1 USDC decrypts, 2 USDC does not. The
-    // original code passed the -1 straight through as a balance, which is what
-    // made Send reject every amount on a funded account.
-    //
-    // The PCTs carry the same figures under Poseidon encryption, so decrypt those
-    // instead: the settled balance plus any deposits not yet folded into it.
-    if (total < 0n) {
-      const fromPcts = balanceFromPcts(eerc, amountPCTs, balancePCT);
-      if (fromPcts != null && fromPcts > 0n) {
-        const value = fromPcts.toString();
-        lastDecryptedBalance.set(cacheKey, value);
-        return value;
-      }
-    }
-
     if (total > 0n) {
       const value = total.toString();
       lastDecryptedBalance.set(cacheKey, value);
@@ -503,7 +504,11 @@ async function readEercBalanceParts(eerc: EERC, address: Address, token: Address
     bigint,
   ];
   return {
-    decryptedBalance: decryptedBalanceOf(eerc, eGCT, amountPCTs, balancePCT),
+    // Raw on purpose: the transfer circuit verifies this against the eGCT, so it
+    // must be the eGCT plaintext and nothing else. When the SDK cannot recover that
+    // (-1) the send fails loudly rather than proving against a figure the circuit
+    // will reject -- see the deposit-consolidation note in transferPrivateUsdc.
+    decryptedBalance: eerc.calculateTotalBalance(eGCT, amountPCTs, balancePCT),
     encryptedBalance: [eGCT.c1.x, eGCT.c1.y, eGCT.c2.x, eGCT.c2.y],
   };
 }
