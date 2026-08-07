@@ -39,23 +39,6 @@ explorer/   Branded BenzoNet L1 block explorer (Blockscout)
 Each app folder has its own setup steps. The rest of this document is the backend
 and protocol overview, and its paths are relative to [`backend/`](backend).
 
-## Provenance & Delta
-
-Benzo v1 shipped on Stellar/Soroban: 16 Soroban contracts, 16 Groth16
-circuits, a wallet, and a business console. That version is preserved at the
-[`stellar-final`](https://github.com/Miny-Labs/benzo/tree/stellar-final) tag,
-which points to commit
-[`fbb4d4e`](https://github.com/Miny-Labs/benzo/commit/fbb4d4e).
-
-This Avalanche version is a ground-up rebuild. The contracts stack is new and
-is based on [`ava-labs/EncryptedERC`](https://github.com/ava-labs/EncryptedERC)
-v0.0.4, Groth16/Circom proofs, and ElGamal encryption over BabyJubJub. The
-apps, service layer, deployment scripts, and permissioned L1 infrastructure are
-new for Avalanche.
-
-Zero code is shared with the Stellar implementation. Only the Benzo name and
-the product thesis carry over.
-
 ## What Benzo Does
 
 Benzo is a private payments system for stablecoin workflows. Users register an
