@@ -209,7 +209,32 @@ export interface ReadEercActivityOptions {
   hints?: ActivityHint[];
 }
 
-export async function readEercActivityClientSide(
+// Scans in progress, keyed by account. A refresh fires on mount, on navigation and
+// after every settled transaction, so several can overlap; each would otherwise walk
+// the whole history independently against the same not-yet-saved cache, multiplying
+// getLogs volume and the rate limiting that follows. Callers share one scan instead.
+//
+// A joiner receives the leading caller's hints rather than its own. Hints only
+// decorate rows that the chain scan already returns, and the store re-applies its
+// own hints to local history afterwards, so the merged result is unaffected.
+const inFlightScans = new Map<string, Promise<ActivityRow[]>>();
+
+export function readEercActivityClientSide(
+  account: BenzoAccount,
+  options: ReadEercActivityOptions = {},
+): Promise<ActivityRow[]> {
+  const key = account.address.toLowerCase();
+  const running = inFlightScans.get(key);
+  if (running) return running;
+
+  const scan = runEercActivityScan(account, options).finally(() => {
+    inFlightScans.delete(key);
+  });
+  inFlightScans.set(key, scan);
+  return scan;
+}
+
+async function runEercActivityScan(
   account: BenzoAccount,
   options: ReadEercActivityOptions = {},
 ): Promise<ActivityRow[]> {

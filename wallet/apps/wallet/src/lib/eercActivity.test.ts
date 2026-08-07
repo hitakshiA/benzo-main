@@ -465,3 +465,30 @@ describe("eERC RPC activity", () => {
     expect(entries[0].scannedTo).toBe("56879308");
   });
 });
+
+describe("eERC activity single-flight", () => {
+  it("shares one scan between overlapping callers", async () => {
+    let getLogsCalls = 0;
+    const client = {
+      getBlockNumber: vi.fn().mockResolvedValue(56879310n),
+      readContract: vi.fn().mockResolvedValue(1n),
+      getLogs: vi.fn(async () => { getLogsCalls++; return []; }),
+      getBlock: vi.fn().mockResolvedValue({ timestamp: 1n }),
+    } as unknown as PublicClient;
+    const eerc = { decryptPCT: vi.fn(), getHistoricalBalance: vi.fn() };
+    const account = { address: ACCOUNT } as BenzoAccount;
+
+    // Three concurrent refreshes must cost one scan, not three.
+    await Promise.all([
+      readEercActivityClientSide(account, { client, eerc }),
+      readEercActivityClientSide(account, { client, eerc }),
+      readEercActivityClientSide(account, { client, eerc }),
+    ]);
+    const afterConcurrent = getLogsCalls;
+    expect(afterConcurrent).toBeGreaterThan(0);
+
+    // Once settled the guard clears, so a later refresh still scans.
+    await readEercActivityClientSide(account, { client, eerc });
+    expect(getLogsCalls).toBeGreaterThan(afterConcurrent);
+  });
+});
