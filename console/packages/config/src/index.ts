@@ -1,14 +1,37 @@
 import { defineChain, type Address, type Chain } from "viem";
-import { avalanche, avalancheFuji } from "viem/chains";
+import { avalanche as avalancheDefaults, avalancheFuji } from "viem/chains";
 
-export { avalanche };
+// Vite substitutes `import.meta.env` in the browser build. This package is also
+// imported from Node (vite.config.ts, the package tests), where it is undefined,
+// so read it defensively rather than assuming the Vite context.
+const viteEnv =
+  (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
+
+/**
+ * Swap a chain's default RPC for a configured one.
+ *
+ * The public endpoints baked into viem's chain defs (api.avax-test.network,
+ * api.avax.network) are shared and aggressively rate-limited: they answer 429
+ * with no CORS headers, which surfaces in the browser as an opaque fetch
+ * failure rather than a readable RPC error. Point these at a dedicated
+ * endpoint via env instead of hardcoding one — the value ends up in the public
+ * bundle, so it must not be committed.
+ */
+export function withRpcOverride(chain: Chain, override: string | undefined): Chain {
+  if (!override) return chain;
+  return { ...chain, rpcUrls: { ...chain.rpcUrls, default: { http: [override] } } };
+}
+
+export const avalanche = withRpcOverride(avalancheDefaults, viteEnv.VITE_AVALANCHE_RPC_URL);
 
 export const FUJI_CHAIN_ID = 43_113;
 export const BENZONET_CHAIN_ID = 68_420;
 export const AVALANCHE_CHAIN_ID = 43_114;
 export const BENZONET_BLOCKCHAIN_ID =
   "21iisL1nkpM2AauUadAz7p1gK3waRBZLEJme3LU3gsWpaxy792";
-export const BENZONET_RPC_URL = "https://rpc.benzo.space";
+// BenzoNet is our own permissioned L1 behind the benzonet-rpc-bridge on the
+// validator host, so it has no public-provider fallback to drift onto.
+export const BENZONET_RPC_URL = viteEnv.VITE_BENZONET_RPC_URL ?? "https://rpc.benzo.space";
 export const BENZONET_RPC_PATH = `/ext/bc/${BENZONET_BLOCKCHAIN_ID}/rpc`;
 export const BENZONET_LOCAL_RPC_URL = `http://127.0.0.1:9650${BENZONET_RPC_PATH}`;
 
@@ -34,7 +57,7 @@ export const benzonet = defineChain({
   testnet: true,
 });
 
-export const fuji = avalancheFuji;
+export const fuji = withRpcOverride(avalancheFuji, viteEnv.VITE_FUJI_RPC_URL);
 
 export type BenzoNetwork = "fuji" | "benzonet" | "avalanche";
 
@@ -44,8 +67,11 @@ export const BENZO_NETWORKS = {
   avalanche: "avalanche",
 } as const satisfies Record<BenzoNetwork, BenzoNetwork>;
 
+// Use the RPC-resolved `fuji`/`avalanche` above, not viem's raw defs, so every
+// consumer (wagmi transports, the network menu, wallet_addEthereumChain) agrees
+// on one endpoint per chain.
 export const BENZO_CHAIN_BY_NETWORK = {
-  fuji: avalancheFuji,
+  fuji,
   benzonet,
   avalanche,
 } as const satisfies Record<BenzoNetwork, Chain>;

@@ -75,14 +75,22 @@ export async function ensureGasFunded(address: Address): Promise<void> {
   }
 }
 
+// Retries cover a transient blip, not a saturated endpoint. When the RPC is
+// rate-limiting, each retry is another request against the thing that is already
+// over quota, so a high count converts a slow endpoint into a hard outage —
+// viem's backoff is per-request and does not coordinate across the call sites
+// that fan out during a single screen load. Keep this low and let callers fail
+// with a readable error instead.
+const RPC_TRANSPORT_OPTS = { retryCount: 2, retryDelay: 800, timeout: 25_000 } as const;
+
 export function createViemClients(account: BenzoAccount) {
   const viemAccount = privateKeyToAccount(account.evmPrivateKey);
   return {
-    publicClient: createPublicClient({ chain: ACTIVE_CHAIN, transport: http(RPC_URL, { retryCount: 5, retryDelay: 800, timeout: 25_000 }) }),
+    publicClient: createPublicClient({ chain: ACTIVE_CHAIN, transport: http(RPC_URL, RPC_TRANSPORT_OPTS) }),
     walletClient: createWalletClient({
       account: viemAccount,
       chain: ACTIVE_CHAIN,
-      transport: http(RPC_URL, { retryCount: 5, retryDelay: 800, timeout: 25_000 }),
+      transport: http(RPC_URL, RPC_TRANSPORT_OPTS),
     }),
   };
 }
