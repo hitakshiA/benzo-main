@@ -206,25 +206,36 @@ function hasCiphertext(eGCT: unknown): boolean {
   return found;
 }
 
+// Last balance that actually decrypted, per address. A decrypt against a non-empty
+// ciphertext is occasionally flaky, and reporting nothing is as damaging as
+// reporting zero: Send blocks on "checking" just as readily as on "not enough".
+// The previous good figure is the best available answer until one decrypts again.
+const lastDecryptedBalance = new Map<string, string>();
+
 /**
- * Decrypted private balance in USDC base units, or null when it could not be read.
+ * Decrypted private balance in USDC base units, or null when it could not be read
+ * and nothing better is known.
  *
- * Returning null rather than "0" matters: the caller keeps the balance it already
- * had instead of replacing it with a zero. Send mounts with a refreshBalance(), so
- * a zero here silently overwrote a good balance and left the screen insisting
- * "Not enough private USDC" against a funded account.
+ * Never reports a zero it isn't sure about. Send mounts with a refreshBalance()
+ * while Home does not, so a bad zero here overwrote the good balance Home was
+ * showing and left Send insisting "Not enough private USDC" on a funded account —
+ * every amount down to 0.000001 rejected.
  *
- * A zero decrypt is only trustworthy when the on-chain ciphertext is genuinely
- * empty. When the ciphertext holds a balance but the decrypt yields zero, the read
- * lost a race against key derivation on a freshly constructed EERC, so retry before
- * reporting anything.
+ * A zero is only trusted when the on-chain ciphertext is genuinely empty. If the
+ * ciphertext holds a balance but the decrypt yields zero, the read lost a race
+ * against key derivation on a freshly built EERC: retry, then fall back to the last
+ * value that did decrypt.
  */
 export async function readEercPrivateBalance(account: BenzoAccount): Promise<string | null> {
   const eerc = await createEerc(account);
   if (!eerc || !ENCRYPTED_ERC_ADDRESS || !USDC_TOKEN_ADDRESS) return null;
+  const cacheKey = account.address.toLowerCase();
   const publicKey = await eerc.fetchPublicKey(account.address);
   // An all-zero key is an unregistered account, which really does hold nothing.
-  if (publicKey[0] === 0n && publicKey[1] === 0n) return "0";
+  if (publicKey[0] === 0n && publicKey[1] === 0n) {
+    lastDecryptedBalance.delete(cacheKey);
+    return "0";
+  }
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const result = await eercPublicClient(eerc).readContract({
@@ -242,12 +253,20 @@ export async function readEercPrivateBalance(account: BenzoAccount): Promise<str
     ];
 
     const total = eerc.calculateTotalBalance(eGCT as never, amountPCTs, balancePCT);
-    if (total > 0n) return total.toString();
-    if (!hasCiphertext(eGCT)) return "0";
+    if (total > 0n) {
+      const value = total.toString();
+      lastDecryptedBalance.set(cacheKey, value);
+      return value;
+    }
+    // An empty ciphertext is a real zero — the account spent everything.
+    if (!hasCiphertext(eGCT)) {
+      lastDecryptedBalance.set(cacheKey, "0");
+      return "0";
+    }
     if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 700));
   }
 
-  return null;
+  return lastDecryptedBalance.get(cacheKey) ?? null;
 }
 
 export async function registerEercAccount(account: BenzoAccount): Promise<Hex | undefined> {
