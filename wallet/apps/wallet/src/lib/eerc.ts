@@ -185,25 +185,69 @@ export async function transferPublicUsdc(
   return { txHash };
 }
 
+/** True when the stored ElGamal ciphertext holds anything at all. */
+function hasCiphertext(eGCT: unknown): boolean {
+  let found = false;
+  const walk = (value: unknown): void => {
+    if (found) return;
+    if (typeof value === "bigint") {
+      if (value !== 0n) found = true;
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    if (value && typeof value === "object") {
+      for (const item of Object.values(value)) walk(item);
+    }
+  };
+  walk(eGCT);
+  return found;
+}
+
+/**
+ * Decrypted private balance in USDC base units, or null when it could not be read.
+ *
+ * Returning null rather than "0" matters: the caller keeps the balance it already
+ * had instead of replacing it with a zero. Send mounts with a refreshBalance(), so
+ * a zero here silently overwrote a good balance and left the screen insisting
+ * "Not enough private USDC" against a funded account.
+ *
+ * A zero decrypt is only trustworthy when the on-chain ciphertext is genuinely
+ * empty. When the ciphertext holds a balance but the decrypt yields zero, the read
+ * lost a race against key derivation on a freshly constructed EERC, so retry before
+ * reporting anything.
+ */
 export async function readEercPrivateBalance(account: BenzoAccount): Promise<string | null> {
   const eerc = await createEerc(account);
   if (!eerc || !ENCRYPTED_ERC_ADDRESS || !USDC_TOKEN_ADDRESS) return null;
   const publicKey = await eerc.fetchPublicKey(account.address);
+  // An all-zero key is an unregistered account, which really does hold nothing.
   if (publicKey[0] === 0n && publicKey[1] === 0n) return "0";
-  const result = await eercPublicClient(eerc).readContract({
-    address: ENCRYPTED_ERC_ADDRESS,
-    abi: eerc.encryptedErcAbi,
-    functionName: EERC_CONVERTER_MODE ? "getBalanceFromTokenAddress" : "balanceOf",
-    args: EERC_CONVERTER_MODE ? [account.address, USDC_TOKEN_ADDRESS] : [account.address, 0n],
-  } as never);
-  const [eGCT, , amountPCTs, balancePCT] = result as [
-    unknown,
-    bigint,
-    Array<{ pct: bigint[]; index: bigint }>,
-    bigint[],
-    bigint,
-  ];
-  return eerc.calculateTotalBalance(eGCT as never, amountPCTs, balancePCT).toString();
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await eercPublicClient(eerc).readContract({
+      address: ENCRYPTED_ERC_ADDRESS,
+      abi: eerc.encryptedErcAbi,
+      functionName: EERC_CONVERTER_MODE ? "getBalanceFromTokenAddress" : "balanceOf",
+      args: EERC_CONVERTER_MODE ? [account.address, USDC_TOKEN_ADDRESS] : [account.address, 0n],
+    } as never);
+    const [eGCT, , amountPCTs, balancePCT] = result as [
+      unknown,
+      bigint,
+      Array<{ pct: bigint[]; index: bigint }>,
+      bigint[],
+      bigint,
+    ];
+
+    const total = eerc.calculateTotalBalance(eGCT as never, amountPCTs, balancePCT);
+    if (total > 0n) return total.toString();
+    if (!hasCiphertext(eGCT)) return "0";
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 700));
+  }
+
+  return null;
 }
 
 export async function registerEercAccount(account: BenzoAccount): Promise<Hex | undefined> {
