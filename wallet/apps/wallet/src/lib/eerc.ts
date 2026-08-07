@@ -237,6 +237,25 @@ function balanceFromPcts(
   }
 }
 
+/**
+ * The account's private balance, with the discrete-log failure corrected.
+ *
+ * calculateTotalBalance answers -1 when the eGCT value falls outside the range it
+ * searches, which happens at ordinary amounts. Every caller must apply the PCT
+ * fallback: the transfer path passes this figure to the SDK, which rejects the send
+ * with "Insufficient balance!" the moment it is negative.
+ */
+function decryptedBalanceOf(
+  eerc: EERC,
+  eGCT: unknown,
+  amountPCTs: AmountPCT[] | undefined,
+  balancePCT: bigint[] | undefined,
+): bigint {
+  const total = eerc.calculateTotalBalance(eGCT as never, amountPCTs as never, balancePCT as never);
+  if (total >= 0n) return total;
+  return balanceFromPcts(eerc, amountPCTs, balancePCT) ?? 0n;
+}
+
 // Last balance that actually decrypted, per address. A decrypt against a non-empty
 // ciphertext is occasionally flaky, and reporting nothing is as damaging as
 // reporting zero: Send blocks on "checking" just as readily as on "not enough".
@@ -484,7 +503,7 @@ async function readEercBalanceParts(eerc: EERC, address: Address, token: Address
     bigint,
   ];
   return {
-    decryptedBalance: eerc.calculateTotalBalance(eGCT, amountPCTs, balancePCT),
+    decryptedBalance: decryptedBalanceOf(eerc, eGCT, amountPCTs, balancePCT),
     encryptedBalance: [eGCT.c1.x, eGCT.c1.y, eGCT.c2.x, eGCT.c2.y],
   };
 }
