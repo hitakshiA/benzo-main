@@ -55,7 +55,13 @@ export const EERC_CIRCUIT_URLS: CircuitURLs = {
 // revert on gas. Ask the testnet faucet (proxied at /api/faucet) to drip a little
 // gas + USDC, then wait for it to land. The faucet is balance-gated and
 // rate-limited server-side, so importing an already-funded key is a no-op.
-const FAUCET_MIN_GAS_WEI = 10_000_000_000_000_000n; // 0.01 AVAX
+// The gate the drip has to clear before onboarding continues. It must stay BELOW
+// the faucet's AVAX_DRIP or ensureGasFunded() spins for its full timeout on every
+// new wallet and only then proceeds. Both are sized against Fuji's base fee: at the
+// current ~10 wei a registration costs ~5e-11 AVAX, but Fuji's usual ~25 gwei puts
+// it near 0.00625 and a shield near 0.0147 — so if the base fee normalises, raise
+// this and the drip back to 0.002 / 0.03 respectively.
+const FAUCET_MIN_GAS_WEI = 2_000_000_000_000_000n; // 0.002 AVAX
 
 export async function ensureGasFunded(address: Address): Promise<void> {
   const client = getPublicClient();
