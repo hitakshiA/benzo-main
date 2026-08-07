@@ -426,6 +426,42 @@ describe("eERC RPC activity", () => {
       { client, eerc },
     )).resolves.toEqual([]);
 
-    expect(localStorage.length).toBe(0);
+    // A row whose block timestamp could not be read is dropped rather than
+    // fabricated, so nothing untrustworthy can reach the cache.
+    const cached = Object.keys(localStorage)
+      .map((k) => JSON.parse(localStorage.getItem(k) ?? "{}"))
+      .flatMap((entry) => entry.rows ?? []);
+    expect(cached).toEqual([]);
+  });
+
+  it("still advances the scan cursor past the blocks it did resolve", async () => {
+    // The cursor must survive a partial scan. Discarding it whenever any timestamp
+    // fails is self-reinforcing under rate limiting: every later poll rescans the
+    // full history, which draws more failures, so the cursor never advances.
+    const client = {
+      getBlockNumber: vi.fn().mockResolvedValue(56879310n),
+      readContract: vi.fn().mockResolvedValue(1n),
+      getLogs: vi.fn(async (params: { event: { name: string } }) => {
+        if (params.event.name !== "Deposit") return [];
+        return [{
+          args: { amount: 100n, dust: 0n, tokenId: 1n },
+          blockNumber: 56879309n,
+          eventName: "Deposit",
+          logIndex: 5,
+          transactionHash: TX3,
+        }];
+      }),
+      getBlock: vi.fn().mockRejectedValue(new Error("RPC unavailable")),
+    } as unknown as PublicClient;
+    const eerc = { decryptPCT: vi.fn(), getHistoricalBalance: vi.fn() };
+
+    await readEercActivityClientSide({ address: ACCOUNT } as BenzoAccount, { client, eerc });
+
+    const entries = Object.keys(localStorage).map((k) =>
+      JSON.parse(localStorage.getItem(k) ?? "{}"),
+    );
+    expect(entries).toHaveLength(1);
+    // Stops one short of the block that failed, so that block is retried next pass.
+    expect(entries[0].scannedTo).toBe("56879308");
   });
 });

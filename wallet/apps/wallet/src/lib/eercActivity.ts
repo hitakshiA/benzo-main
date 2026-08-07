@@ -260,7 +260,24 @@ export async function readEercActivityClientSide(
   }
 
   const merged = mergeActivityRows(cache?.rows ?? [], applyActivityHints(rows, hints));
-  if (unresolvedBlockTimestamps.size === 0) saveActivityCache(account.address, latestBlock, merged);
+
+  // Persist as far as the scan is actually trustworthy. Requiring a completely
+  // clean pass before saving anything is self-reinforcing under rate limiting: one
+  // failed timestamp lookup discards the cursor, the next poll rescans from
+  // EERC_ACTIVITY_START_BLOCK (hundreds of getLogs windows), which draws more 429s,
+  // which fails more timestamps — so the cursor never advances and every poll pays
+  // for the full history again.
+  //
+  // Anything below the earliest unresolved block is complete, so keep that and let
+  // the unresolved tail be picked up next time. scannedTo must never move backwards
+  // or a later degraded pass would throw away a good earlier one.
+  const unresolved = [...unresolvedBlockTimestamps];
+  const scannedTo =
+    unresolved.length === 0
+      ? latestBlock
+      : unresolved.reduce((lowest, block) => (block < lowest ? block : lowest)) - 1n;
+  const previouslyScannedTo = cache?.scannedTo ?? 0n;
+  if (scannedTo > previouslyScannedTo) saveActivityCache(account.address, scannedTo, merged);
   return merged;
 }
 
