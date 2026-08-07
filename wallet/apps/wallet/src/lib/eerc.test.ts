@@ -57,7 +57,10 @@ describe("transferPublicUsdc", () => {
     });
 
     expect(mocks.privateKeyToAccount).toHaveBeenCalledWith(account.evmPrivateKey);
-    expect(mocks.http).toHaveBeenCalledWith("https://rpc.example", expect.objectContaining({ retryCount: 5 }));
+    // Retries stay low on purpose: against a rate-limited endpoint each retry is
+    // another request to the thing already over quota, which turns a degraded
+    // RPC into a hard failure. Raising this needs the same rethink.
+    expect(mocks.http).toHaveBeenCalledWith("https://rpc.example", expect.objectContaining({ retryCount: 2 }));
     expect(mocks.writeContract).toHaveBeenCalledWith({
       account: { address: "0x2222222222222222222222222222222222222222" },
       address: mocks.tokenAddress,
