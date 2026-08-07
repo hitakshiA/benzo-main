@@ -87,3 +87,20 @@ describe("rpcTransport eth_estimateGas correction", () => {
     expect(requestMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("rpcTransport eth_fillTransaction", () => {
+  it("reports the method unsupported without hitting the node", async () => {
+    await expect(makeRequest()({ method: "eth_fillTransaction", params: [FEE_CALL] })).rejects.toThrow(
+      /eth_fillTransaction/,
+    );
+    // Refusing locally is the point: viem caches the unsupported result, so this
+    // must not cost a round trip.
+    expect(requestMock).not.toHaveBeenCalled();
+  });
+
+  it("throws an error viem recognises as method-not-found", async () => {
+    const err = await makeRequest()({ method: "eth_fillTransaction", params: [] }).catch((e) => e);
+    expect(err.name).toBe("MethodNotFoundRpcError");
+    expect(err.code).toBe(-32601);
+  });
+});

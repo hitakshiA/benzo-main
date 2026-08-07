@@ -1,4 +1,4 @@
-import { http, type HttpTransportConfig, type Transport } from "viem";
+import { http, MethodNotFoundRpcError, type HttpTransportConfig, type Transport } from "viem";
 
 /**
  * Avalanche answers eth_estimateGas with a balance-derived spend allowance
@@ -50,6 +50,18 @@ export function rpcTransport(url?: string, config?: HttpTransportConfig): Transp
     const base = transport.request;
 
     const request = (async (args: RpcArgs, opts?: unknown) => {
+      // viem prefers eth_fillTransaction and takes the node's `gas` verbatim, which
+      // on Avalanche is the same bad allowance — and unlike estimateGas there is no
+      // fee-free variant to fall back on. Report it unsupported so viem drops to the
+      // individual calls, where the correction below applies. viem caches this per
+      // client, so it costs one refusal rather than a round trip per transaction.
+      if (args?.method === "eth_fillTransaction") {
+        throw new MethodNotFoundRpcError(
+          new Error("eth_fillTransaction is not available"),
+          { method: "eth_fillTransaction" },
+        );
+      }
+
       const result = await base(args as never, opts as never);
       if (args?.method !== "eth_estimateGas" || typeof result !== "string") return result;
 
