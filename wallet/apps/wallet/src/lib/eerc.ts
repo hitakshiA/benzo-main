@@ -206,6 +206,37 @@ function hasCiphertext(eGCT: unknown): boolean {
   return found;
 }
 
+type AmountPCT = { pct: bigint[]; index: bigint };
+
+/** Decrypt one Poseidon ciphertext, treating an all-zero or unreadable one as nothing. */
+function decryptPct(eerc: EERC, pct: readonly bigint[] | undefined): bigint {
+  if (!pct?.length || pct.every((part) => part === 0n)) return 0n;
+  try {
+    return BigInt(eerc.decryptPCT(pct as never).toString());
+  } catch {
+    return 0n;
+  }
+}
+
+/**
+ * Balance recovered from the PCTs rather than the eGCT: the settled balance plus
+ * every deposit still waiting to be folded into it. Used when the discrete-log
+ * search over the eGCT cannot recover the value.
+ */
+function balanceFromPcts(
+  eerc: EERC,
+  amountPCTs: AmountPCT[] | undefined,
+  balancePCT: bigint[] | undefined,
+): bigint | null {
+  try {
+    let total = decryptPct(eerc, balancePCT);
+    for (const entry of amountPCTs ?? []) total += decryptPct(eerc, entry?.pct);
+    return total;
+  } catch {
+    return null;
+  }
+}
+
 // Last balance that actually decrypted, per address. A decrypt against a non-empty
 // ciphertext is occasionally flaky, and reporting nothing is as damaging as
 // reporting zero: Send blocks on "checking" just as readily as on "not enough".
@@ -253,6 +284,24 @@ export async function readEercPrivateBalance(account: BenzoAccount): Promise<str
     ];
 
     const total = eerc.calculateTotalBalance(eGCT as never, amountPCTs, balancePCT);
+
+    // calculateTotalBalance recovers the balance from the eGCT by discrete-log
+    // search and answers -1 when the value falls outside the range it searches.
+    // That happens at ordinary amounts: 1 USDC decrypts, 2 USDC does not. The
+    // original code passed the -1 straight through as a balance, which is what
+    // made Send reject every amount on a funded account.
+    //
+    // The PCTs carry the same figures under Poseidon encryption, so decrypt those
+    // instead: the settled balance plus any deposits not yet folded into it.
+    if (total < 0n) {
+      const fromPcts = balanceFromPcts(eerc, amountPCTs, balancePCT);
+      if (fromPcts != null && fromPcts > 0n) {
+        const value = fromPcts.toString();
+        lastDecryptedBalance.set(cacheKey, value);
+        return value;
+      }
+    }
+
     if (total > 0n) {
       const value = total.toString();
       lastDecryptedBalance.set(cacheKey, value);
