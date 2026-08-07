@@ -1,5 +1,6 @@
-import { createPublicClient, http } from "viem";
+import { createPublicClient } from "viem";
 import { ACTIVE_CHAIN, ENCRYPTED_ERC_ADDRESS, RPC_URL, subscribeNetwork } from "./network";
+import { rpcTransport } from "./rpcTransport";
 import { DEMO_MODE } from "../demo/flag";
 import { demoLedgerSequence } from "../demo/registry";
 
@@ -12,7 +13,7 @@ export interface ChainStatus {
 }
 
 function buildClient() {
-  return createPublicClient({ chain: ACTIVE_CHAIN, transport: http(RPC_URL) });
+  return createPublicClient({ chain: ACTIVE_CHAIN, transport: rpcTransport(RPC_URL) });
 }
 
 // The read client is rebuilt whenever the active network changes so the ledger

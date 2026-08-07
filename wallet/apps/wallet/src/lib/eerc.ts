@@ -3,7 +3,6 @@ import {
   createPublicClient,
   createWalletClient,
   erc20Abi,
-  http,
   type Address,
   type Hex,
   type PublicClient,
@@ -20,6 +19,7 @@ import {
 } from "./network";
 import type { BenzoAccount } from "@benzo/core";
 import { INSUFFICIENT_PRIVATE_USDC_ERROR } from "./errors";
+import { rpcTransport } from "./rpcTransport";
 
 type CircuitURLs = ConstructorParameters<typeof EERC>[5];
 
@@ -86,11 +86,11 @@ const RPC_TRANSPORT_OPTS = { retryCount: 2, retryDelay: 800, timeout: 25_000 } a
 export function createViemClients(account: BenzoAccount) {
   const viemAccount = privateKeyToAccount(account.evmPrivateKey);
   return {
-    publicClient: createPublicClient({ chain: ACTIVE_CHAIN, transport: http(RPC_URL, RPC_TRANSPORT_OPTS) }),
+    publicClient: createPublicClient({ chain: ACTIVE_CHAIN, transport: rpcTransport(RPC_URL, RPC_TRANSPORT_OPTS) }),
     walletClient: createWalletClient({
       account: viemAccount,
       chain: ACTIVE_CHAIN,
-      transport: http(RPC_URL, RPC_TRANSPORT_OPTS),
+      transport: rpcTransport(RPC_URL, RPC_TRANSPORT_OPTS),
     }),
   };
 }
@@ -103,7 +103,7 @@ let sharedPublicClient: PublicClient | null = null;
 let sharedPublicClientChainId: number | null = null;
 export function getPublicClient(): PublicClient {
   if (!sharedPublicClient || sharedPublicClientChainId !== ACTIVE_CHAIN.id) {
-    sharedPublicClient = createPublicClient({ chain: ACTIVE_CHAIN, transport: http(RPC_URL, { retryCount: 5, retryDelay: 800, timeout: 25_000 }) });
+    sharedPublicClient = createPublicClient({ chain: ACTIVE_CHAIN, transport: rpcTransport(RPC_URL, { retryCount: 5, retryDelay: 800, timeout: 25_000 }) });
     sharedPublicClientChainId = ACTIVE_CHAIN.id;
   }
   return sharedPublicClient;

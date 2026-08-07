@@ -1,7 +1,8 @@
 import type { DeploymentNetwork } from "@benzo/config";
 import { QueryClient } from "@tanstack/react-query";
-import { createConfig, http } from "wagmi";
+import { createConfig } from "wagmi";
 import { resolveNetworkConfig } from "./network";
+import { rpcTransport } from "./rpcTransport";
 
 /** Build a wagmi config bound to a single network, rebuilt whenever the user switches. */
 export function createWagmiConfig(network: DeploymentNetwork) {
@@ -14,7 +15,7 @@ export function createWagmiConfig(network: DeploymentNetwork) {
     chains: [chain],
     connectors: [],
     transports: {
-      [chain.id]: http(rpcUrl),
+      [chain.id]: rpcTransport(rpcUrl),
     },
     ssr: false,
   });
