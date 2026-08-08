@@ -248,11 +248,17 @@ export function App() {
                 <Route path="/share-proof" element={<ShareProof />} />
                 <Route path="/invite" element={<InviteExternal />} />
                 <Route path="/claim" element={<Claim />} />
-                {/* Shared links are built as `${WEB_BASE}/claim?...#secret` with
-                    WEB_BASE ending in /l, so a real invite arrives at /l/claim.
-                    Without this it fell through to "*" and silently rendered Home,
-                    which made every invite link unclaimable. */}
+                {/* Shared links are built as `${WEB_BASE}/<kind>?...` with WEB_BASE
+                    ending in /l, so real links arrive under /l. Without these they
+                    fell through to "*" and silently rendered Home: invites were
+                    unclaimable and payment requests unopenable.
+
+                    Claim is the link handler for every kind it understands — it
+                    parses the URL and dispatches to the claim flow, the pay-request
+                    surface, or a wrong-app notice for business links. */}
                 <Route path="/l/claim" element={<Claim />} />
+                <Route path="/l/request" element={<Claim />} />
+                <Route path="/l/org/*" element={<Claim />} />
                 <Route path="*" element={<Home />} />
               </Routes>
               </Suspense>
