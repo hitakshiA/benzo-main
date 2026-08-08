@@ -248,6 +248,11 @@ export function App() {
                 <Route path="/share-proof" element={<ShareProof />} />
                 <Route path="/invite" element={<InviteExternal />} />
                 <Route path="/claim" element={<Claim />} />
+                {/* Shared links are built as `${WEB_BASE}/claim?...#secret` with
+                    WEB_BASE ending in /l, so a real invite arrives at /l/claim.
+                    Without this it fell through to "*" and silently rendered Home,
+                    which made every invite link unclaimable. */}
+                <Route path="/l/claim" element={<Claim />} />
                 <Route path="*" element={<Home />} />
               </Routes>
               </Suspense>

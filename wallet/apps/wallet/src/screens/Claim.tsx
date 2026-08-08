@@ -49,7 +49,17 @@ export function Claim() {
   const loc = useLocation();
   const nav = useNavigate();
   const { refresh } = useWallet();
-  const rawLink = useMemo(() => params.get("link") ?? linkFromHash(loc.hash), [params, loc.hash]);
+  // A shared invite is opened directly as `${WEB_BASE}/claim?...#secret`, so the
+  // whole address bar is the link and the fragment alone is only the secret —
+  // parseBenzoLink rejects that on its own. Prefer the full URL, and keep the
+  // ?link= and fragment-carries-a-link forms for internally generated routes.
+  const rawLink = useMemo(() => {
+    const fromParam = params.get("link");
+    if (fromParam) return fromParam;
+    const href = typeof window === "undefined" ? null : window.location.href;
+    if (href && parseBenzoLink(href)) return href;
+    return linkFromHash(loc.hash);
+  }, [params, loc.hash, loc.pathname]);
   const parsed = useMemo(() => parse(rawLink), [rawLink]);
   const [phase, setPhase] = useState<"ready" | "claiming" | "done" | "error">("ready");
   const [amount, setAmount] = useState<string | null>(null);

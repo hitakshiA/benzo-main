@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Claim } from "./Claim";
@@ -90,5 +90,32 @@ describe("Claim", () => {
     expect(await screen.findByTestId("claim-unavailable")).toHaveTextContent("This link was already claimed");
     expect(giftClaimStatusClientSide).toHaveBeenCalledWith(GIFT_SECRET);
     expect(claimLinkClientSide).not.toHaveBeenCalled();
+  });
+});
+
+describe("Claim from a shared invite URL", () => {
+  it("reads the link from the address bar at /l/claim", async () => {
+    // Shared invites land on /l/claim with the secret in the fragment. The
+    // fragment alone is not a parseable link, so the screen has to use the full
+    // URL or every invite reads as broken.
+    const url =
+      "https://wallet.benzo.space/l/claim?amount=50000&asset=USDC&app=consumer#g5.deadbeef";
+    window.history.pushState({}, "", "/l/claim?amount=50000&asset=USDC&app=consumer#g5.deadbeef");
+    const spy = vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      href: url,
+    } as Location);
+
+    render(
+      <MemoryRouter initialEntries={["/l/claim?amount=50000&asset=USDC&app=consumer#g5.deadbeef"]}>
+        <Claim />
+      </MemoryRouter>,
+    );
+
+    // A broken link renders the error state; a readable one does not.
+    await waitFor(() => {
+      expect(screen.queryByTestId("claim-error")).toBeNull();
+    });
+    spy.mockRestore();
   });
 });
